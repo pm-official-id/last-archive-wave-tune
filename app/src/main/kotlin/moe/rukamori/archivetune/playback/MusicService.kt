@@ -243,6 +243,9 @@ import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
 import moe.rukamori.archivetune.constants.LastWaveHiResFlacEnabledKey
 import moe.rukamori.archivetune.constants.LastWaveDolbyAtmosEnabledKey
 import moe.rukamori.archivetune.constants.LastWave24BitAudioEnabledKey
+import moe.rukamori.archivetune.constants.LastWavePluginsEnabledKey
+import moe.rukamori.archivetune.constants.LastWaveStreamingAddonsEnabledKey
+import moe.rukamori.archivetune.constants.LastWaveStreamingAddonUrlKey
 import moe.rukamori.archivetune.constants.toFormatName
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerCrypto
@@ -7311,6 +7314,7 @@ class MusicService :
      */
     private fun isSourceEnabled(source: AudioSourceType): Boolean =
         when (source) {
+            AudioSourceType.LASTWAVE -> dataStore.get(LastWaveStreamingAddonsEnabledKey, true) || dataStore.get(LastWavePluginsEnabledKey, true) || dataStore.get(LastWaveStreamingAddonUrlKey, "").isNotBlank()
             AudioSourceType.YOUTUBE -> dataStore.get(YouTubeSourceEnabledKey, true)
             AudioSourceType.TIDAL -> dataStore.get(TidalEnabledKey, true)
             AudioSourceType.QOBUZ -> dataStore.get(QobuzEnabledKey, false)
@@ -7886,6 +7890,7 @@ class MusicService :
             Timber.tag("MusicService").d("Trying source: %s for \"%s\"", source.name, query.title)
             val stream: DirectStream? =
                 when (source) {
+                    AudioSourceType.LASTWAVE -> resolveLastWaveAddonStream(query)
                     AudioSourceType.TIDAL -> resolveTidalStream(query)
                     AudioSourceType.QOBUZ -> resolveQobuzStream(query)
                     AudioSourceType.QOBUZ_BACKUP -> resolveQobuzBackupStream(query)
@@ -8389,6 +8394,70 @@ class MusicService :
         if (out.exists() && out.length() > 0) return out
         out.writeBytes(build())
         return out
+    }
+
+    private fun resolveLastWaveAddonStream(query: SourceQuery): DirectStream? {
+        val addonUrl = dataStore.get(LastWaveStreamingAddonUrlKey, "")
+        if (addonUrl.isBlank()) {
+            Timber.tag("MusicService").d("LastWave Addon skip: no addon URL configured")
+            return null
+        }
+
+        val dolbyAtmosEnabled = dataStore.get(LastWaveDolbyAtmosEnabledKey, false)
+        val hiResEnabled = dataStore.get(LastWaveHiResFlacEnabledKey, false) || dataStore.get(LastWave24BitAudioEnabledKey, false)
+        val quality = if (hiResEnabled) "lossless" else "high"
+
+        Timber.tag("MusicService").d("LastWave Addon resolve start | url=%s quality=%s atmos=%s", addonUrl, quality, dolbyAtmosEnabled)
+
+        return runCatching {
+            runBlocking(Dispatchers.IO) {
+                val client = moe.rukamori.archivetune.addon.AddonClient(addonUrl, mediaOkHttpClient)
+                val searchQuery = "${query.title} ${query.artists.firstOrNull().orEmpty()}".trim()
+                val searchResult = client.search(searchQuery, quality, dolbyAtmosEnabled).getOrNull()
+                if (searchResult.isNullOrEmpty()) {
+                    Timber.tag("MusicService").d("LastWave Addon search returned no tracks for '%s'", searchQuery)
+                    return@runBlocking null
+                }
+
+                val candidate = searchResult.firstOrNull() ?: return@runBlocking null
+                val streamResult = client.stream(candidate.id, quality, dolbyAtmosEnabled).getOrNull() ?: return@runBlocking null
+
+                val streamUri = streamResult.directStreamUrl.takeIf { !it.isNullOrBlank() }
+                    ?: streamResult.url.takeIf { it.isNotBlank() }
+                    ?: streamResult.dataUrl.takeIf { !it.isNullOrBlank() }
+                    ?: return@runBlocking null
+
+                val mimeType = if (streamResult.format.contains("dash", ignoreCase = true) || streamUri.contains("dash")) {
+                    "application/dash+xml"
+                } else if (streamResult.format.contains("flac", ignoreCase = true) || streamUri.endsWith(".flac")) {
+                    "audio/flac"
+                } else {
+                    "audio/mp4"
+                }
+
+                val is24Bit = (streamResult.bitDepth ?: candidate.bitDepth ?: 16) >= 24
+                val labelQuality = if (is24Bit) "24-bit Hi-Res FLAC" else if (streamResult.isDolbyAtmos || candidate.isDolbyAtmos) "Dolby Atmos" else "Lossless FLAC"
+
+                Timber.tag("MusicService").i("LastWave Addon resolved '%s' -> %s (%s)", query.title, streamUri.take(60), labelQuality)
+
+                DirectStream(
+                    uri = streamUri,
+                    mimeType = mimeType,
+                    codecs = streamResult.codec.ifBlank { "flac" },
+                    contentLength = null,
+                    label = "LastWave $labelQuality",
+                    source = AudioSourceType.LASTWAVE,
+                    sampleRate = streamResult.sampleRate?.toInt() ?: candidate.sampleRate?.toInt(),
+                    bitDepth = streamResult.bitDepth ?: candidate.bitDepth,
+                    matchedTitle = candidate.title.ifBlank { query.title },
+                    matchedArtist = candidate.artist.ifBlank { query.artists.firstOrNull() },
+                    matchedAlbum = candidate.album.ifBlank { query.album },
+                    matchedDurationMs = (candidate.duration * 1000).toLong().takeIf { it > 0 } ?: query.durationMs,
+                )
+            }
+        }.onFailure { error ->
+            Timber.tag("MusicService").w(error, "LastWave Addon stream resolution failed for %s", query.mediaId)
+        }.getOrNull()
     }
 
     private fun resolveTidalStream(query: SourceQuery): DirectStream? {

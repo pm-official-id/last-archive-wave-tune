@@ -165,6 +165,7 @@
     <string name="tiktok_main_lyrics_desc">Display a karaoke lyrics strip with word animation, translation and romanisation on the TikTok player screen, aligned with the song info</string>
 
     <!-- LastWave Hi-Res Audio settings -->
+    <string name="source_lastwave">LastWave Addon</string>
     <string name="lastwave_hires_title">LastWave Hi-Res Audio</string>
     <string name="lastwave_hires_summary">High-fidelity lossless FLAC, Dolby Atmos, and 24-bit audio streams</string>
     <string name="lastwave_hi_res_flac">Hi-Res Lossless FLAC</string>

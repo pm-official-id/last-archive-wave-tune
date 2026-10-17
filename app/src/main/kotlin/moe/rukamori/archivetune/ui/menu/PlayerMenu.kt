@@ -1825,6 +1825,7 @@ private fun multiplierToSlider(multiplier: Float): Float {
 
 private fun AudioSourceType.sourceLabelRes(): Int =
     when (this) {
+        AudioSourceType.LASTWAVE -> R.string.source_lastwave
         AudioSourceType.TIDAL -> R.string.source_tidal
         AudioSourceType.QOBUZ -> R.string.source_qobuz
         AudioSourceType.QOBUZ_BACKUP -> R.string.source_qobuz_backup
@@ -1838,6 +1839,7 @@ private fun AudioSourceType.sourceLabelRes(): Int =
 
 private fun AudioSourceType.sourceIconRes(): Int =
     when (this) {
+        AudioSourceType.LASTWAVE -> R.drawable.bolt
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz

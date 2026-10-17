@@ -427,6 +427,7 @@ object DownloadSourceConfig {
      */
     fun fromAudioSource(source: AudioSourceType): DownloadSource? =
         when (source) {
+            AudioSourceType.LASTWAVE -> null
             AudioSourceType.QOBUZ -> DownloadSource.QOBUZ
             AudioSourceType.QOBUZ_BACKUP -> DownloadSource.QOBUZ_BACKUP
             AudioSourceType.TIDAL -> DownloadSource.TIDAL
@@ -1676,6 +1677,7 @@ val TelegramBotForwardToChannelKey = booleanPreferencesKey("telegramBotForwardTo
 // source matched" into a hard playback failure rather than a silent YouTube stream.
 
 enum class AudioSourceType {
+    LASTWAVE,
     TIDAL,
     QOBUZ,
     QOBUZ_BACKUP,

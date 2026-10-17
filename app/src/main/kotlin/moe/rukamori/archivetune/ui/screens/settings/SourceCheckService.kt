@@ -25,6 +25,9 @@ import moe.rukamori.archivetune.constants.AmazonTurnstileJwtKey
 import moe.rukamori.archivetune.qqmusic.QqMusicApi
 import moe.rukamori.archivetune.qqmusic.QqMusicSession
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.LastWaveStreamingAddonUrlKey
+import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.jiosaavn.SaavnService
@@ -70,6 +73,7 @@ object SourceCheckService {
     suspend fun check(source: AudioSourceType, context: Context): SourceCheckResult =
         withContext(Dispatchers.IO) {
             when (source) {
+                AudioSourceType.LASTWAVE -> checkLastWave(context)
                 AudioSourceType.TIDAL -> checkTidal(context)
                 AudioSourceType.QOBUZ -> checkQobuz(context)
                 AudioSourceType.QOBUZ_BACKUP -> checkQobuzBackup()
@@ -354,6 +358,27 @@ object SourceCheckService {
                 )
             }
         }.getOrNull()
+
+    private suspend fun checkLastWave(context: Context): SourceCheckResult {
+        val addonUrl = context.dataStore.get(LastWaveStreamingAddonUrlKey, "")
+        if (addonUrl.isBlank()) {
+            return SourceCheckResult(
+                healthy = false,
+                summary = "No LastWave streaming addon endpoint configured. Set the endpoint URL in Integration → LastWave Hi-Res Audio → LastWave Addons & Plugins (.lwp).",
+            )
+        }
+        val ok = try {
+            val addonClient = moe.rukamori.archivetune.addon.AddonClient(addonUrl, client)
+            addonClient.manifest().isSuccess
+        } catch (_: Throwable) {
+            false
+        }
+        return if (ok) {
+            SourceCheckResult(healthy = true, summary = "Streaming addon endpoint verified ($addonUrl).")
+        } else {
+            SourceCheckResult(healthy = false, summary = "Streaming addon endpoint unreachable ($addonUrl). Check URL or internet connection.")
+        }
+    }
 
     private suspend fun checkAppleMusic(): SourceCheckResult {
         val mediaToken = AppleMusicAudioProvider.mediaUserToken()

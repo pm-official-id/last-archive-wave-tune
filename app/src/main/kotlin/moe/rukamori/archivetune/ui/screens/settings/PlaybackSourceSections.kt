@@ -106,6 +106,7 @@ import kotlinx.coroutines.withContext
 
 private fun AudioSourceType.displayName(context: android.content.Context): String =
     when (this) {
+        AudioSourceType.LASTWAVE -> context.getString(R.string.source_lastwave)
         AudioSourceType.TIDAL -> context.getString(R.string.source_tidal)
         AudioSourceType.QOBUZ -> context.getString(R.string.source_qobuz)
         AudioSourceType.QOBUZ_BACKUP -> context.getString(R.string.source_qobuz_backup)
@@ -119,6 +120,7 @@ private fun AudioSourceType.displayName(context: android.content.Context): Strin
 
 private fun AudioSourceType.iconRes(): Int =
     when (this) {
+        AudioSourceType.LASTWAVE -> R.drawable.bolt
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
@@ -235,6 +237,7 @@ internal fun PlaybackSourceSections(
 
     fun isEnabled(source: AudioSourceType): Boolean =
         when (source) {
+            AudioSourceType.LASTWAVE -> true
             AudioSourceType.TIDAL -> tidalEnabled
             AudioSourceType.QOBUZ -> qobuzEnabled
             AudioSourceType.QOBUZ_BACKUP -> qobuzBackupEnabled
@@ -255,6 +258,7 @@ internal fun PlaybackSourceSections(
     fun onOrderConfirm(newOrder: List<AudioSourceType>) {
         newOrder.firstOrNull()?.let { top ->
             when (top) {
+                AudioSourceType.LASTWAVE -> {}
                 AudioSourceType.TIDAL -> if (!tidalEnabled) onTidalEnabledChange(true)
                 AudioSourceType.QOBUZ -> if (!qobuzEnabled) onQobuzEnabledChange(true)
                 AudioSourceType.QOBUZ_BACKUP -> if (!qobuzBackupEnabled) onQobuzBackupEnabledChange(true)
