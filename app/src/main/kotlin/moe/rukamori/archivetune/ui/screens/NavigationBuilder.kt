@@ -81,6 +81,7 @@ import moe.rukamori.archivetune.ui.screens.settings.ExportDownloadedSongsScreen
 import moe.rukamori.archivetune.ui.screens.settings.HiddenPlaylistsScreen
 import moe.rukamori.archivetune.ui.screens.settings.IconScreen
 import moe.rukamori.archivetune.ui.screens.settings.IntegrationScreen
+import moe.rukamori.archivetune.ui.screens.settings.LastWaveSettings
 import moe.rukamori.archivetune.ui.screens.settings.ListenTogetherSettings
 import moe.rukamori.archivetune.ui.screens.settings.InternetSettings
 import moe.rukamori.archivetune.ui.screens.settings.TidalSettings
@@ -652,6 +653,12 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         IntegrationScreen(navController, it.savedStateHandle["scrollTo"])
+    }
+    composable(
+        route = "settings/lastwave?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        LastWaveSettings(navController, it.savedStateHandle["scrollTo"])
     }
     composable(route = "settings/integrations/listen_together") {
         ListenTogetherSettings(navController, scrollBehavior)

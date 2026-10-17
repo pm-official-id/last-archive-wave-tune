@@ -135,6 +135,19 @@ fun IntegrationScreen(
             }
 
             PreferenceGroup(
+                title = stringResource(R.string.lastwave_hires_title),
+            ) {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.lastwave_hires_title)) },
+                        description = stringResource(R.string.lastwave_hires_summary),
+                        icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                        onClick = { navController.navigate("settings/lastwave") },
+                    )
+                }
+            }
+
+            PreferenceGroup(
                 modifier = positions.modifierFor("discord_presence"),
                 title = stringResource(R.string.general),
             ) {

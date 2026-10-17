@@ -163,4 +163,14 @@
     <!-- TikTok player: karaoke caption strip under the artwork. -->
     <string name="tiktok_main_lyrics">Show lyrics on main player</string>
     <string name="tiktok_main_lyrics_desc">Display a karaoke lyrics strip with word animation, translation and romanisation on the TikTok player screen, aligned with the song info</string>
+
+    <!-- LastWave Hi-Res Audio settings -->
+    <string name="lastwave_hires_title">LastWave Hi-Res Audio</string>
+    <string name="lastwave_hires_summary">High-fidelity lossless FLAC, Dolby Atmos, and 24-bit audio streams</string>
+    <string name="lastwave_hi_res_flac">Hi-Res Lossless FLAC</string>
+    <string name="lastwave_hi_res_flac_desc">Stream high-resolution lossless audio up to FLAC master quality</string>
+    <string name="lastwave_dolby_atmos">Dolby Atmos / Spatial Audio</string>
+    <string name="lastwave_dolby_atmos_desc">Enable Dolby multi-channel immersive audio streams</string>
+    <string name="lastwave_24bit_audio">24-bit High-Resolution Audio</string>
+    <string name="lastwave_24bit_audio_desc">Output uncompressed 24-bit/192kHz master audio streams</string>
 </resources>

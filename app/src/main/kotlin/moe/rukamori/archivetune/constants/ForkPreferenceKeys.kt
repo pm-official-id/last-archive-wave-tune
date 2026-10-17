@@ -80,3 +80,8 @@ val TikTokMainLyricsEnabledKey = booleanPreferencesKey("tiktokMainLyricsEnabled"
 // built-in order; PlaylistTagOrderKey defaults empty = unknown/never arranged.
 val LibraryChipOrderKey = stringPreferencesKey("libraryChipOrder")
 val PlaylistTagOrderKey = stringPreferencesKey("playlistTagOrder")
+
+// LastWave Hi-Res Audio settings keys
+val LastWaveHiResFlacEnabledKey = booleanPreferencesKey("lastWaveHiResFlacEnabled")
+val LastWaveDolbyAtmosEnabledKey = booleanPreferencesKey("lastWaveDolbyAtmosEnabled")
+val LastWave24BitAudioEnabledKey = booleanPreferencesKey("lastWave24BitAudioEnabled")
