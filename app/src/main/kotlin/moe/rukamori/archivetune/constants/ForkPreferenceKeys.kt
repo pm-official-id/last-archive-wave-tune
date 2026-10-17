@@ -85,3 +85,8 @@ val PlaylistTagOrderKey = stringPreferencesKey("playlistTagOrder")
 val LastWaveHiResFlacEnabledKey = booleanPreferencesKey("lastWaveHiResFlacEnabled")
 val LastWaveDolbyAtmosEnabledKey = booleanPreferencesKey("lastWaveDolbyAtmosEnabled")
 val LastWave24BitAudioEnabledKey = booleanPreferencesKey("lastWave24BitAudioEnabled")
+
+// LastWave Addons & Plugins (.lwp) settings keys
+val LastWavePluginsEnabledKey = booleanPreferencesKey("lastWavePluginsEnabled")
+val LastWaveStreamingAddonsEnabledKey = booleanPreferencesKey("lastWaveStreamingAddonsEnabled")
+val LastWaveAutoUpdatePluginsKey = booleanPreferencesKey("lastWaveAutoUpdatePlugins")

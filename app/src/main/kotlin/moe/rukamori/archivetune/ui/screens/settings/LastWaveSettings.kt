@@ -7,6 +7,7 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
@@ -24,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
@@ -31,6 +33,7 @@ import moe.rukamori.archivetune.constants.LastWave24BitAudioEnabledKey
 import moe.rukamori.archivetune.constants.LastWaveDolbyAtmosEnabledKey
 import moe.rukamori.archivetune.constants.LastWaveHiResFlacEnabledKey
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SettingsTopAppBar
 import moe.rukamori.archivetune.ui.component.SwitchPreference
@@ -116,6 +119,21 @@ fun LastWaveSettings(
                         icon = { Icon(painterResource(R.drawable.equalizer), null) },
                         checked = bit24Enabled,
                         onCheckedChange = onBit24Change,
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.padding(8.dp))
+
+            PreferenceGroup(
+                title = stringResource(R.string.lastwave_plugins_title),
+            ) {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.lastwave_plugins_title)) },
+                        description = stringResource(R.string.lastwave_plugins_summary),
+                        icon = { Icon(painterResource(R.drawable.experiment), null) },
+                        onClick = { navController.navigate("settings/lastwave/plugins") },
                     )
                 }
             }

@@ -173,4 +173,17 @@
     <string name="lastwave_dolby_atmos_desc">Enable Dolby multi-channel immersive audio streams</string>
     <string name="lastwave_24bit_audio">24-bit High-Resolution Audio</string>
     <string name="lastwave_24bit_audio_desc">Output uncompressed 24-bit/192kHz master audio streams</string>
+
+    <!-- LastWave Plugins & Addons (.lwp) -->
+    <string name="lastwave_plugins_title">LastWave Addons &amp; Plugins (.lwp)</string>
+    <string name="lastwave_plugins_summary">Manage external .lwp addon provider scripts and streaming modules</string>
+    <string name="lastwave_enable_plugins">Enable .lwp Plugin Execution</string>
+    <string name="lastwave_enable_plugins_desc">Allow importing and running third-party .lwp provider scripts</string>
+    <string name="lastwave_streaming_addons">Streaming Addon Modules</string>
+    <string name="lastwave_streaming_addons_desc">Enable external stream interceptors and decoders</string>
+    <string name="lastwave_auto_update_plugins">Auto-Update Addons</string>
+    <string name="lastwave_auto_update_plugins_desc">Automatically check and update installed .lwp plugins from remote sources</string>
+    <string name="lastwave_import_plugin">Import .lwp Addon</string>
+    <string name="lastwave_import_plugin_desc">Tap to select and install a local .lwp plugin package</string>
+    <string name="lastwave_plugin_import_toast">Select a .lwp file to import addon provider</string>
 </resources>
