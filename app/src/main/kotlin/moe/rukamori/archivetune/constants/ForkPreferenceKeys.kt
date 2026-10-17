@@ -90,3 +90,5 @@ val LastWave24BitAudioEnabledKey = booleanPreferencesKey("lastWave24BitAudioEnab
 val LastWavePluginsEnabledKey = booleanPreferencesKey("lastWavePluginsEnabled")
 val LastWaveStreamingAddonsEnabledKey = booleanPreferencesKey("lastWaveStreamingAddonsEnabled")
 val LastWaveAutoUpdatePluginsKey = booleanPreferencesKey("lastWaveAutoUpdatePlugins")
+val LastWaveStreamingAddonUrlKey = stringPreferencesKey("lastWaveStreamingAddonUrl")
+val LastWaveImportedPluginsKey = stringPreferencesKey("lastWaveImportedPlugins")
