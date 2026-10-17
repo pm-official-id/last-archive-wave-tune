@@ -240,6 +240,9 @@ import moe.rukamori.archivetune.qqmusic.QqMusicSession
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
 import moe.rukamori.archivetune.constants.SaavnAudioQuality
 import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
+import moe.rukamori.archivetune.constants.LastWaveHiResFlacEnabledKey
+import moe.rukamori.archivetune.constants.LastWaveDolbyAtmosEnabledKey
+import moe.rukamori.archivetune.constants.LastWave24BitAudioEnabledKey
 import moe.rukamori.archivetune.constants.toFormatName
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerCrypto
@@ -7214,8 +7217,11 @@ class MusicService :
             .build()
     }
 
-    private fun parseTidalAudioQuality(): TidalAudioQuality =
-        dataStore.get(TidalAudioQualityKey, TidalAudioQuality.FLAC.name).toEnum(TidalAudioQuality.FLAC)
+    private fun parseTidalAudioQuality(): TidalAudioQuality {
+        val hiResEnabled = dataStore.get(LastWaveHiResFlacEnabledKey, false) || dataStore.get(LastWave24BitAudioEnabledKey, false)
+        if (hiResEnabled) return TidalAudioQuality.HI_RES_LOSSLESS
+        return dataStore.get(TidalAudioQualityKey, TidalAudioQuality.FLAC.name).toEnum(TidalAudioQuality.FLAC)
+    }
 
     private fun parseAppleMusicQuality(): AppleMusicQuality {
         val stored = dataStore.get(AppleMusicQualityKey, AppleMusicQuality.LOSSLESS.name)
@@ -8511,7 +8517,7 @@ class MusicService :
                             durationMs = query.durationMs,
                         ),
                     cacheDir = cacheDir,
-                    preferAtmos = false,
+                    preferAtmos = dataStore.get(LastWaveDolbyAtmosEnabledKey, false),
                     preferLiveDash = true,
                     audioQuality = quality,
                 )
