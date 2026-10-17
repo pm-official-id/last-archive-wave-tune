@@ -1,5 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
+    <string name="app_name">Last-Archive-Wave-Tune</string>
     <string name="home">Home</string>
     <string name="songs">Songs</string>
     <string name="artists">Artists</string>
@@ -1829,4 +1830,12 @@
     <string name="user_blocked_by_host">User blocked by host</string>
     <string name="waiting_for_approval">Waiting for approval from host</string>
     <string name="you_label">You</string>
+    <string name="widget_album_art_description">Album Art Widget</string>
+    <string name="widget_description">Now Playing Widget</string>
+    <string name="widget_listening_insights_description">Listening Insights Widget</string>
+    <string name="widget_now_playing_card_description">Now Playing Card Widget</string>
+    <string name="widget_playback_capsule_description">Playback Capsule Widget</string>
+    <string name="widget_playback_command_description">Playback Command Widget</string>
+    <string name="widget_playback_deck_description">Playback Deck Widget</string>
+    <string name="widget_playback_spotlight_description">Playback Spotlight Widget</string>
 </resources>

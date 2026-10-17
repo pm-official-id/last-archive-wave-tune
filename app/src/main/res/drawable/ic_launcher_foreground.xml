@@ -1,0 +1,33 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer Archive Accent Ring -->
+    <path
+        android:pathData="M54,20 A34,34 0 1,1 53.99,20 Z"
+        android:strokeWidth="3.5"
+        android:strokeColor="#FF813F" />
+    <path
+        android:pathData="M54,27 A27,27 0 1,1 53.99,27 Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#00E5FF" />
+
+    <!-- Center Waveform Audio Bars -->
+    <path
+        android:fillColor="#FF813F"
+        android:pathData="M32,46 a3,3 0 0,1 6,0 v16 a3,3 0 0,1 -6,0 z" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M43,36 a3.5,3.5 0 0,1 7,0 v36 a3.5,3.5 0 0,1 -7,0 z" />
+    <path
+        android:fillColor="#FF813F"
+        android:pathData="M54,26 a4,4 0 0,1 8,0 v56 a4,4 0 0,1 -8,0 z" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M65,36 a3.5,3.5 0 0,1 7,0 v36 a3.5,3.5 0 0,1 -7,0 z" />
+    <path
+        android:fillColor="#FF813F"
+        android:pathData="M76,46 a3,3 0 0,1 6,0 v16 a3,3 0 0,1 -6,0 z" />
+</vector>
