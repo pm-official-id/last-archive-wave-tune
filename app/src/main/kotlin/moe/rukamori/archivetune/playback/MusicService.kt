@@ -9868,6 +9868,9 @@ class MusicService :
                     normalizedScheme == "file" ||
                     normalizedScheme == "android.resource"
                 ) {
+                    // Local streams AND LastWave's cached DASH manifests (file://.../*.mpd) MUST bypass the HTTP-based cache
+                    // layer. CacheDataSource's upstream is DefaultHttpDataSource, which throws an
+                    // unsupported-scheme exception when asked to open a file:// URI.
                     directFactory
                 } else {
                     cachedFactory
