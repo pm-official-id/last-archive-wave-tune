@@ -8396,6 +8396,67 @@ class MusicService :
         return out
     }
 
+    private fun verifiedAddonCandidateScore(
+        query: SourceQuery,
+        candidate: moe.rukamori.archivetune.addon.AddonTrack,
+    ): Double? {
+        val normQueryTitle = TitleMatch.normalize(query.title)
+        val normCandTitle = TitleMatch.normalize(candidate.title)
+        if (normQueryTitle.isBlank() || normCandTitle.isBlank()) return null
+
+        // 1. Version indicators check (remix, live, acoustic, instrumental, karaoke, cover)
+        fun extractVersions(s: String): Set<String> {
+            val lower = s.lowercase()
+            val versions = mutableSetOf<String>()
+            if (lower.contains("remix")) versions.add("remix")
+            if (lower.contains("live")) versions.add("live")
+            if (lower.contains("acoustic")) versions.add("acoustic")
+            if (lower.contains("instrumental")) versions.add("instrumental")
+            if (lower.contains("karaoke")) versions.add("karaoke")
+            if (lower.contains("cover")) versions.add("cover")
+            if (lower.contains("tribute")) versions.add("tribute")
+            if (lower.contains("demo")) versions.add("demo")
+            return versions
+        }
+
+        val queryVersions = extractVersions(query.title)
+        val candVersions = extractVersions(candidate.title)
+        if (queryVersions != candVersions) {
+            return null
+        }
+
+        // 2. Title similarity ratio
+        val titleRatio = TitleMatch.ratio(query.title, candidate.title)
+        if (titleRatio < 0.72) return null
+
+        // 3. Artist match check
+        val targetArtist = query.artists.firstOrNull().orEmpty().lowercase()
+        val candidateArtist = candidate.artist.lowercase()
+        val hasArtistMatch = if (targetArtist.isBlank() || candidateArtist.isBlank()) {
+            true
+        } else {
+            val targetTokens = targetArtist.split(Regex("""[\s,;&/]+""")).filter { it.length > 1 }
+            val candTokens = candidateArtist.split(Regex("""[\s,;&/]+""")).filter { it.length > 1 }
+            targetTokens.any { it in candTokens } || candTokens.any { it in targetTokens } ||
+                TitleMatch.ratio(targetArtist, candidateArtist) >= 0.60
+        }
+
+        // 4. Duration check
+        val durationMs = (candidate.duration * 1000).toLong()
+        val durationDiffMs = if (query.durationMs != null && durationMs > 0) {
+            kotlin.math.abs(durationMs - query.durationMs)
+        } else null
+
+        val maxAllowedDiffMs = if (hasArtistMatch) 15_000L else 2_000L
+        if (durationDiffMs != null && durationDiffMs > maxAllowedDiffMs) return null
+
+        var score = titleRatio * 100.0
+        if (hasArtistMatch) score += 50.0
+        if (durationDiffMs != null) score += (maxAllowedDiffMs - durationDiffMs) / 1000.0
+
+        return score
+    }
+
     private fun resolveLastWaveAddonStream(query: SourceQuery): DirectStream? {
         val addonUrl = dataStore.get(LastWaveStreamingAddonUrlKey, "")
         if (addonUrl.isBlank()) {
@@ -8419,22 +8480,15 @@ class MusicService :
                     return@runBlocking null
                 }
 
-                // Filter candidates by title similarity and duration tolerance
+                // Filter candidates by version agreement, title similarity, artist match, and duration tolerance
                 val validCandidates = searchResult.mapNotNull { candidate ->
-                    val titleRatio = TitleMatch.ratio(query.title, candidate.title)
-                    val durationMs = (candidate.duration * 1000).toLong()
-                    val durationDiff = if (query.durationMs != null && durationMs > 0) {
-                        kotlin.math.abs(durationMs - query.durationMs)
-                    } else 0L
-
-                    // Require at least 65% title similarity and within 20s duration delta
-                    if (titleRatio >= 0.65 && durationDiff <= 20_000L) {
-                        Triple(candidate, titleRatio, durationDiff)
-                    } else null
-                }.sortedWith(compareByDescending<Triple<moe.rukamori.archivetune.addon.AddonTrack, Double, Long>> { it.second }.thenBy { it.third })
+                    verifiedAddonCandidateScore(query, candidate)?.let { score ->
+                        candidate to score
+                    }
+                }.sortedByDescending { it.second }
 
                 val candidate = validCandidates.firstOrNull()?.first ?: run {
-                    Timber.tag("MusicService").w("LastWave Addon: no candidates passed title/duration match for '%s'", query.title)
+                    Timber.tag("MusicService").w("LastWave Addon: no candidates passed verification for '%s'", query.title)
                     return@runBlocking null
                 }
 
