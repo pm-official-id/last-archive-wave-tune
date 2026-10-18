@@ -8538,8 +8538,8 @@ class MusicService :
                         if (!file.exists()) {
                             runCatching { file.writeText(xml, Charsets.UTF_8) }
                         }
-                        playUrl = TidalAudioProvider.progressiveDashUri(file)
-                        mimeType = "audio/flac"
+                        playUrl = android.net.Uri.fromFile(file).toString()
+                        mimeType = "application/dash+xml"
                     }
                 } else if (streamResult.format.contains("flac", ignoreCase = true) || streamUri.contains(".flac")) {
                     mimeType = "audio/flac"
