@@ -8405,7 +8405,7 @@ class MusicService :
 
         val dolbyAtmosEnabled = dataStore.get(LastWaveDolbyAtmosEnabledKey, false)
         val hiResEnabled = dataStore.get(LastWaveHiResFlacEnabledKey, false) || dataStore.get(LastWave24BitAudioEnabledKey, false)
-        val quality = if (hiResEnabled) "lossless" else "high"
+        val quality = if (hiResEnabled) "hi_res" else "lossless"
 
         Timber.tag("MusicService").d("LastWave Addon resolve start | url=%s quality=%s atmos=%s", addonUrl, quality, dolbyAtmosEnabled)
 
@@ -8447,8 +8447,9 @@ class MusicService :
                     contentLength = null,
                     label = "LastWave $labelQuality",
                     source = AudioSourceType.LASTWAVE,
-                    sampleRate = streamResult.sampleRate?.toInt() ?: candidate.sampleRate?.toInt(),
-                    bitDepth = streamResult.bitDepth ?: candidate.bitDepth,
+                    trustedDirectId = true,
+                    sampleRate = streamResult.sampleRate?.toInt() ?: candidate.sampleRate?.toInt() ?: 44100,
+                    bitDepth = streamResult.bitDepth ?: candidate.bitDepth ?: 16,
                     matchedTitle = candidate.title.ifBlank { query.title },
                     matchedArtist = candidate.artist.ifBlank { query.artists.firstOrNull() },
                     matchedAlbum = candidate.album.ifBlank { query.album },
