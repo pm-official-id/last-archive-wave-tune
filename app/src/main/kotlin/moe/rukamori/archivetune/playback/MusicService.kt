@@ -8514,24 +8514,32 @@ class MusicService :
                 var playUrl = streamUri
                 var mimeType = "audio/flac"
 
-                if (streamUri.startsWith("data:application/dash+xml;base64,", ignoreCase = true)) {
-                    val xml = String(
-                        android.util.Base64.decode(streamUri.substringAfter("base64,"), android.util.Base64.DEFAULT),
-                        Charsets.UTF_8,
-                    )
-                    val digest = java.security.MessageDigest.getInstance("SHA-256")
-                        .digest(xml.toByteArray(Charsets.UTF_8))
-                        .joinToString("") { "%02x".format(it) }
-                        .take(16)
-                    val dir = java.io.File(cacheDir, "tidal_mpd").apply { mkdirs() }
-                    val file = java.io.File(dir, "lastwave_${candidate.id}_$digest.mpd")
-                    if (!file.exists()) {
-                        runCatching { file.writeText(xml, Charsets.UTF_8) }
+                if (streamUri.startsWith("data:application/dash+xml;base64,", ignoreCase = true) || streamResult.format.contains("dash", ignoreCase = true) || streamUri.contains(".mpd")) {
+                    val xml = if (streamUri.startsWith("data:application/dash+xml;base64,", ignoreCase = true)) {
+                        String(
+                            android.util.Base64.decode(streamUri.substringAfter("base64,"), android.util.Base64.DEFAULT),
+                            Charsets.UTF_8,
+                        )
+                    } else {
+                        runCatching {
+                            val req = Request.Builder().url(streamUri).header("User-Agent", "LastWave-Player/1.0").get().build()
+                            mediaOkHttpClient.newCall(req).execute().use { it.body?.string().orEmpty() }
+                        }.getOrDefault("")
                     }
-                    playUrl = android.net.Uri.fromFile(file).toString()
-                    mimeType = "application/dash+xml"
-                } else if (streamResult.format.contains("dash", ignoreCase = true) || streamUri.contains(".mpd")) {
-                    mimeType = "application/dash+xml"
+
+                    if (xml.isNotBlank()) {
+                        val digest = java.security.MessageDigest.getInstance("SHA-256")
+                            .digest(xml.toByteArray(Charsets.UTF_8))
+                            .joinToString("") { "%02x".format(it) }
+                            .take(16)
+                        val dir = java.io.File(cacheDir, "tidal_mpd").apply { mkdirs() }
+                        val file = java.io.File(dir, "lastwave_${candidate.id}_$digest.mpd")
+                        if (!file.exists()) {
+                            runCatching { file.writeText(xml, Charsets.UTF_8) }
+                        }
+                        playUrl = TidalAudioProvider.progressiveDashUri(file)
+                        mimeType = "audio/flac"
+                    }
                 } else if (streamResult.format.contains("flac", ignoreCase = true) || streamUri.contains(".flac")) {
                     mimeType = "audio/flac"
                 } else if (streamResult.format.contains("mp4", ignoreCase = true) || streamResult.format.contains("m4a", ignoreCase = true) || streamUri.contains(".m4a")) {
