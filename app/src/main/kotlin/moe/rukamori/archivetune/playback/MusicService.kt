@@ -8507,9 +8507,9 @@ class MusicService :
 
                 val streamResult = client.stream(candidate.id, quality, dolbyAtmosEnabled).getOrNull() ?: return@runBlocking null
 
-                val streamUri = streamResult.directStreamUrl.takeIf { !it.isNullOrBlank() }
+                val streamUri = streamResult.dataUrl.takeIf { !it.isNullOrBlank() }
+                    ?: streamResult.directStreamUrl.takeIf { !it.isNullOrBlank() }
                     ?: streamResult.url.takeIf { it.isNotBlank() }
-                    ?: streamResult.dataUrl.takeIf { !it.isNullOrBlank() }
                     ?: return@runBlocking null
 
                 var playUrl = streamUri
