@@ -7283,6 +7283,7 @@ class MusicService :
             mapOf(
                 // Defaults MUST match the toggle defaults in PlaybackSourceSections so the
                 // UI and the resolver agree on which sources are active out of the box.
+                AudioSourceType.LASTWAVE to (dataStore.get(LastWaveStreamingAddonsEnabledKey, true) || dataStore.get(LastWaveStreamingAddonUrlKey, "").isNotBlank()),
                 AudioSourceType.TIDAL to dataStore.get(TidalEnabledKey, true),
                 AudioSourceType.QOBUZ to dataStore.get(QobuzEnabledKey, false),
                 AudioSourceType.QOBUZ_BACKUP to dataStore.get(QobuzBackupEnabledKey, false),
