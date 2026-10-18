@@ -7179,8 +7179,7 @@ class MusicService :
             }
 
         return ResolvingDataSource.Factory(routingFactory) { dataSpec ->
-            val scheme = dataSpec.uri.scheme?.lowercase(Locale.US)
-            if (scheme == DeezerCrypto.SCHEME || scheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME) {
+            if (dataSpec.uri.shouldBypassYouTubeResolver()) {
                 dataSpec
             } else {
                 resolvePlaybackDataSpec(
