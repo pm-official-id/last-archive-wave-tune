@@ -8511,27 +8511,46 @@ class MusicService :
                     ?: streamResult.dataUrl.takeIf { !it.isNullOrBlank() }
                     ?: return@runBlocking null
 
-                val mimeType = if (streamResult.format.contains("dash", ignoreCase = true) || streamUri.contains("dash")) {
-                    "application/dash+xml"
-                } else if (streamResult.format.contains("flac", ignoreCase = true) || streamUri.contains("flac")) {
-                    "audio/flac"
-                } else {
-                    "audio/flac"
+                var playUrl = streamUri
+                var mimeType = "audio/flac"
+
+                if (streamUri.startsWith("data:application/dash+xml;base64,", ignoreCase = true)) {
+                    val xml = String(
+                        android.util.Base64.decode(streamUri.substringAfter("base64,"), android.util.Base64.DEFAULT),
+                        Charsets.UTF_8,
+                    )
+                    val digest = java.security.MessageDigest.getInstance("SHA-256")
+                        .digest(xml.toByteArray(Charsets.UTF_8))
+                        .joinToString("") { "%02x".format(it) }
+                        .take(16)
+                    val dir = java.io.File(cacheDir, "tidal_mpd").apply { mkdirs() }
+                    val file = java.io.File(dir, "lastwave_${candidate.id}_$digest.mpd")
+                    if (!file.exists()) {
+                        runCatching { file.writeText(xml, Charsets.UTF_8) }
+                    }
+                    playUrl = android.net.Uri.fromFile(file).toString()
+                    mimeType = "application/dash+xml"
+                } else if (streamResult.format.contains("dash", ignoreCase = true) || streamUri.contains(".mpd")) {
+                    mimeType = "application/dash+xml"
+                } else if (streamResult.format.contains("flac", ignoreCase = true) || streamUri.contains(".flac")) {
+                    mimeType = "audio/flac"
+                } else if (streamResult.format.contains("mp4", ignoreCase = true) || streamResult.format.contains("m4a", ignoreCase = true) || streamUri.contains(".m4a")) {
+                    mimeType = "audio/mp4"
                 }
 
                 val is24Bit = (streamResult.bitDepth ?: candidate.bitDepth ?: 16) >= 24
                 val labelQuality = if (is24Bit) "24-bit Hi-Res FLAC" else if (streamResult.isDolbyAtmos || candidate.isDolbyAtmos) "Dolby Atmos" else "Lossless FLAC"
 
-                Timber.tag("MusicService").i("LastWave Addon resolved '%s' -> %s (%s)", query.title, streamUri.take(60), labelQuality)
+                Timber.tag("MusicService").i("LastWave Addon resolved '%s' -> %s (%s)", query.title, playUrl.take(60), labelQuality)
 
                 DirectStream(
-                    uri = streamUri,
+                    uri = playUrl,
                     mimeType = mimeType,
                     codecs = streamResult.codec.ifBlank { "flac" },
                     contentLength = null,
                     label = "LastWave $labelQuality",
                     source = AudioSourceType.LASTWAVE,
-                    trustedDirectId = false,
+                    trustedDirectId = true,
                     sampleRate = streamResult.sampleRate?.toInt() ?: candidate.sampleRate?.toInt() ?: 44100,
                     bitDepth = streamResult.bitDepth ?: candidate.bitDepth ?: 16,
                     matchedTitle = candidate.title.ifBlank { query.title },
