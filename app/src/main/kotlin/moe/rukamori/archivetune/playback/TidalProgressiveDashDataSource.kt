@@ -74,7 +74,7 @@ internal class TidalProgressiveDashDataSource(
         transferStarted(dataSpec)
 
         try {
-            if (dataSpec.position > 0L) skipFully(dataSpec.position)
+            if (dataSpec.position > 0L) seekToPosition(dataSpec.position)
             bytesRemaining = dataSpec.length
             return bytesRemaining
         } catch (error: CancellationException) {
@@ -154,6 +154,21 @@ internal class TidalProgressiveDashDataSource(
         } catch (error: Throwable) {
             throw IOException("TIDAL FLAC segment ${segmentIndex + 1} failed", error)
         }
+    }
+
+    private fun seekToPosition(bytesToSkip: Long) {
+        if (bytesToSkip <= 0L) return
+        if (bytesToSkip < pendingBytes.size) {
+            pendingOffset = bytesToSkip.toInt()
+            return
+        }
+
+        val remainingAfterHeader = bytesToSkip - pendingBytes.size
+        val approxSegmentBytes = 200_000L
+        val estimatedSegmentIndex = (1 + (remainingAfterHeader / approxSegmentBytes)).toInt().coerceIn(1, segmentUrls.size - 1)
+
+        nextSegmentIndex = estimatedSegmentIndex
+        loadNextSegment()
     }
 
     private fun skipFully(bytesToSkip: Long) {
