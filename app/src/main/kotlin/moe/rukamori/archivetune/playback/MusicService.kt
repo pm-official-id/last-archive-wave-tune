@@ -8419,7 +8419,25 @@ class MusicService :
                     return@runBlocking null
                 }
 
-                val candidate = searchResult.firstOrNull() ?: return@runBlocking null
+                // Filter candidates by title similarity and duration tolerance
+                val validCandidates = searchResult.mapNotNull { candidate ->
+                    val titleRatio = TitleMatch.ratio(query.title, candidate.title)
+                    val durationMs = (candidate.duration * 1000).toLong()
+                    val durationDiff = if (query.durationMs != null && durationMs > 0) {
+                        kotlin.math.abs(durationMs - query.durationMs)
+                    } else 0L
+
+                    // Require at least 65% title similarity and within 20s duration delta
+                    if (titleRatio >= 0.65 && durationDiff <= 20_000L) {
+                        Triple(candidate, titleRatio, durationDiff)
+                    } else null
+                }.sortedWith(compareByDescending<Triple<moe.rukamori.archivetune.addon.AddonTrack, Double, Long>> { it.second }.thenBy { it.third })
+
+                val candidate = validCandidates.firstOrNull()?.first ?: run {
+                    Timber.tag("MusicService").w("LastWave Addon: no candidates passed title/duration match for '%s'", query.title)
+                    return@runBlocking null
+                }
+
                 val streamResult = client.stream(candidate.id, quality, dolbyAtmosEnabled).getOrNull() ?: return@runBlocking null
 
                 val streamUri = streamResult.directStreamUrl.takeIf { !it.isNullOrBlank() }
@@ -8429,10 +8447,10 @@ class MusicService :
 
                 val mimeType = if (streamResult.format.contains("dash", ignoreCase = true) || streamUri.contains("dash")) {
                     "application/dash+xml"
-                } else if (streamResult.format.contains("flac", ignoreCase = true) || streamUri.endsWith(".flac")) {
+                } else if (streamResult.format.contains("flac", ignoreCase = true) || streamUri.contains("flac")) {
                     "audio/flac"
                 } else {
-                    "audio/mp4"
+                    "audio/flac"
                 }
 
                 val is24Bit = (streamResult.bitDepth ?: candidate.bitDepth ?: 16) >= 24
@@ -8447,7 +8465,7 @@ class MusicService :
                     contentLength = null,
                     label = "LastWave $labelQuality",
                     source = AudioSourceType.LASTWAVE,
-                    trustedDirectId = true,
+                    trustedDirectId = false,
                     sampleRate = streamResult.sampleRate?.toInt() ?: candidate.sampleRate?.toInt() ?: 44100,
                     bitDepth = streamResult.bitDepth ?: candidate.bitDepth ?: 16,
                     matchedTitle = candidate.title.ifBlank { query.title },
