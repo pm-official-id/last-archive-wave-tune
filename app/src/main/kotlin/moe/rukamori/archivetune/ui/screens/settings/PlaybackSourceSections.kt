@@ -511,6 +511,20 @@ internal fun PlaybackSourceSections(
         }
     }
 
+    PreferenceGroup(title = stringResource(R.string.lastwave_hires_title)) {
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.lastwave_hires_title)) },
+                description = stringResource(R.string.lastwave_hires_summary),
+                icon = { Icon(painterResource(R.drawable.bolt), null) },
+                onClick = { navController.navigate("settings/lastwave") },
+            )
+        }
+        item {
+            SourceCheckRow(source = AudioSourceType.LASTWAVE)
+        }
+    }
+
     PreferenceGroup(title = stringResource(R.string.qobuz_specific)) {
         item {
             SwitchPreference(

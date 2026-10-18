@@ -137,6 +137,9 @@ import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.LastWaveStreamingAddonUrlKey
+import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
@@ -1881,6 +1884,7 @@ private fun SongSourceDialog(
     var searchMode by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var sourceFilter by rememberSaveable { mutableStateOf<AudioSourceType?>(null) }
+    val context = LocalContext.current
 
     // Strings fetched at the Composable scope so they can be referenced safely inside produceState.
     val aacLabel = stringResource(R.string.quality_badge_aac)
@@ -1904,6 +1908,7 @@ private fun SongSourceDialog(
     // Provider filter → "search backend not yet available" empty state.
     val searchableSources =
         setOf(
+            AudioSourceType.LASTWAVE,
             AudioSourceType.YOUTUBE,
             AudioSourceType.TIDAL,
             AudioSourceType.QOBUZ,
@@ -1926,12 +1931,38 @@ private fun SongSourceDialog(
         }
         delay(350L) // debounce
         val out = mutableListOf<SourceSearchResult>()
+        val searchLastWave = sourceFilter == null || sourceFilter == AudioSourceType.LASTWAVE
         val searchYtm = sourceFilter == null || sourceFilter == AudioSourceType.YOUTUBE
         val searchTidal = sourceFilter == null || sourceFilter == AudioSourceType.TIDAL
         val searchQobuz = sourceFilter == null || sourceFilter == AudioSourceType.QOBUZ
         val searchQobuzBackup = sourceFilter == null || sourceFilter == AudioSourceType.QOBUZ_BACKUP
         val searchDeezer = sourceFilter == null || sourceFilter == AudioSourceType.DEEZER
         val searchSaavn = sourceFilter == null || sourceFilter == AudioSourceType.JIOSAAVN
+
+        if (searchLastWave) {
+            val addonUrl = context.dataStore.get(LastWaveStreamingAddonUrlKey, "")
+            if (addonUrl.isNotBlank()) {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        val client = moe.rukamori.archivetune.addon.AddonClient(addonUrl)
+                        client.search(searchQuery).getOrNull()
+                    }.getOrNull()?.forEach { track ->
+                        out.add(
+                            SourceSearchResult(
+                                source = AudioSourceType.LASTWAVE,
+                                trackId = track.id,
+                                title = track.title,
+                                artist = track.artist,
+                                thumbnailUrl = null,
+                                durationMs = (track.duration * 1000).toLong(),
+                                qualityLabel = if (track.isDolbyAtmos) "Dolby Atmos" else "Lossless FLAC",
+                                songItem = null,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
 
         if (searchYtm) {
             withContext(Dispatchers.IO) {
@@ -2149,6 +2180,7 @@ private fun SongSourceDialog(
                     chips =
                         listOf(
                             null to stringResource(R.string.source_search_filter_all),
+                            AudioSourceType.LASTWAVE to stringResource(R.string.source_lastwave),
                             AudioSourceType.TIDAL to stringResource(R.string.source_tidal),
                             AudioSourceType.QOBUZ to stringResource(R.string.source_qobuz),
                             AudioSourceType.QOBUZ_BACKUP to stringResource(R.string.source_qobuz_backup),
@@ -2164,6 +2196,7 @@ private fun SongSourceDialog(
                     icons =
                         mapOf(
                             null to R.drawable.search,
+                            AudioSourceType.LASTWAVE to R.drawable.bolt,
                             AudioSourceType.TIDAL to R.drawable.provider_tidal,
                             AudioSourceType.QOBUZ to R.drawable.provider_qobuz,
                             AudioSourceType.QOBUZ_BACKUP to R.drawable.provider_qobuz,
