@@ -8427,7 +8427,7 @@ class MusicService :
 
         // 2. Title similarity ratio
         val titleRatio = TitleMatch.ratio(query.title, candidate.title)
-        if (titleRatio < 0.72) return null
+        if (titleRatio < 0.60) return null
 
         // 3. Artist match check
         val targetArtist = query.artists.firstOrNull().orEmpty().lowercase()
@@ -8473,21 +8473,33 @@ class MusicService :
         return runCatching {
             runBlocking(Dispatchers.IO) {
                 val client = moe.rukamori.archivetune.addon.AddonClient(addonUrl, mediaOkHttpClient)
-                val searchQuery = "${query.title} ${query.artists.firstOrNull().orEmpty()}".trim()
-                val searchResult = client.search(searchQuery, quality, dolbyAtmosEnabled).getOrNull()
-                if (searchResult.isNullOrEmpty()) {
-                    Timber.tag("MusicService").d("LastWave Addon search returned no tracks for '%s'", searchQuery)
-                    return@runBlocking null
+                val primaryArtist = query.artists.firstOrNull().orEmpty()
+                val queries = listOfNotNull(
+                    if (primaryArtist.isNotBlank()) "${query.title} $primaryArtist".trim() else null,
+                    query.title.trim(),
+                    if (query.artists.size > 1) "${query.title} ${query.artists[1]}".trim() else null,
+                ).filter { it.isNotBlank() }.distinct()
+
+                var bestCandidate: moe.rukamori.archivetune.addon.AddonTrack? = null
+
+                for (q in queries) {
+                    val searchResult = client.search(q, quality, dolbyAtmosEnabled).getOrNull()
+                    if (searchResult.isNullOrEmpty()) continue
+
+                    val validCandidates = searchResult.mapNotNull { candidate ->
+                        verifiedAddonCandidateScore(query, candidate)?.let { score ->
+                            candidate to score
+                        }
+                    }.sortedByDescending { it.second }
+
+                    val topMatch = validCandidates.firstOrNull()?.first
+                    if (topMatch != null) {
+                        bestCandidate = topMatch
+                        break
+                    }
                 }
 
-                // Filter candidates by version agreement, title similarity, artist match, and duration tolerance
-                val validCandidates = searchResult.mapNotNull { candidate ->
-                    verifiedAddonCandidateScore(query, candidate)?.let { score ->
-                        candidate to score
-                    }
-                }.sortedByDescending { it.second }
-
-                val candidate = validCandidates.firstOrNull()?.first ?: run {
+                val candidate = bestCandidate ?: run {
                     Timber.tag("MusicService").w("LastWave Addon: no candidates passed verification for '%s'", query.title)
                     return@runBlocking null
                 }
