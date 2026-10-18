@@ -45,6 +45,7 @@ class SourceOrderTest {
             listOf(
                 AudioSourceType.TIDAL,
                 AudioSourceType.QOBUZ,
+                AudioSourceType.LASTWAVE,
                 AudioSourceType.QOBUZ_BACKUP,
                 AudioSourceType.DEEZER,
                 AudioSourceType.APPLE,
@@ -61,6 +62,7 @@ class SourceOrderTest {
         // sourceResolutionChain() drops everything from YouTube onward.
         val reachable = AudioSourceConfig.parseOrder("TIDAL,QOBUZ,YOUTUBE").takeWhile { it != AudioSourceType.YOUTUBE }
 
+        assertTrue(AudioSourceType.LASTWAVE in reachable)
         assertTrue(AudioSourceType.DEEZER in reachable)
         assertTrue(AudioSourceType.QOBUZ_BACKUP in reachable)
         assertTrue(AudioSourceType.APPLE in reachable)
@@ -81,7 +83,7 @@ class SourceOrderTest {
 
     @Test
     fun completeOrderIsReturnedUnchanged() {
-        val stored = "JIOSAAVN,APPLE,DEEZER,QOBUZ_BACKUP,QOBUZ,TIDAL,YOUTUBE"
+        val stored = "LASTWAVE,JIOSAAVN,APPLE,DEEZER,QOBUZ_BACKUP,QOBUZ,TIDAL,YOUTUBE"
         val merged = AudioSourceConfig.parseOrder(stored)
 
         assertEquals(stored, merged.joinToString(",") { it.name })
