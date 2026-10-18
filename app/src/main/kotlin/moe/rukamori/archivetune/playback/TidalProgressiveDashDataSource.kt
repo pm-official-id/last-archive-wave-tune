@@ -69,13 +69,17 @@ internal class TidalProgressiveDashDataSource(
                 'C'.code.toByte(),
             ) + fetchSegment(urls.first(), 0)
         pendingOffset = 0
-        bytesRemaining = C.LENGTH_UNSET.toLong()
+        val estimatedTotalBytes = pendingBytes.size.toLong() + (urls.size - 1).toLong() * 200_000L
+        bytesRemaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) {
+            dataSpec.length
+        } else {
+            (estimatedTotalBytes - dataSpec.position).coerceAtLeast(1L)
+        }
         opened = true
         transferStarted(dataSpec)
 
         try {
             if (dataSpec.position > 0L) seekToPosition(dataSpec.position)
-            bytesRemaining = dataSpec.length
             return bytesRemaining
         } catch (error: CancellationException) {
             close()
