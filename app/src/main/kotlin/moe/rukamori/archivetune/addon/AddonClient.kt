@@ -12,6 +12,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
+import moe.rukamori.archivetune.utils.SourceDebugLogger
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.URI
@@ -59,17 +60,20 @@ class AddonClient(
         if (baseUrl.isBlank()) return@withContext Result.failure(IllegalArgumentException("Empty addon URL"))
         val url = if (baseUrl.endsWith("/manifest.json")) baseUrl else "$baseUrl/manifest.json"
         try {
+            SourceDebugLogger.log("LastWave-Addon", "GET manifest URL=$url")
             val reqBuilder = Request.Builder().url(url).get()
                 .header("User-Agent", "LastWave-Player/1.0")
                 .header("X-LW-Intent", "stream")
             signRequest(url, "GET", reqBuilder)
             val req = reqBuilder.build()
             client.newCall(req).execute().use { res ->
-                if (!res.isSuccessful) return@withContext Result.failure(Exception("HTTP ${res.code}"))
                 val body = res.body?.string().orEmpty()
+                SourceDebugLogger.log("LastWave-Addon", "Manifest response HTTP ${res.code} (bytes=${body.length}): ${body.take(200)}")
+                if (!res.isSuccessful) return@withContext Result.failure(Exception("HTTP ${res.code}"))
                 Result.success(json.decodeFromString<AddonManifest>(body))
             }
         } catch (e: Exception) {
+            SourceDebugLogger.log("LastWave-Addon", "Manifest exception for $url", e)
             Result.failure(e)
         }
     }
@@ -84,14 +88,16 @@ class AddonClient(
         val url = "$baseUrl/search?q=$encodedQ&quality=$quality&atmos=$atmosParam"
 
         try {
+            SourceDebugLogger.log("LastWave-Addon", "GET search URL=$url")
             val reqBuilder = Request.Builder().url(url).get()
                 .header("User-Agent", "LastWave-Player/1.0")
                 .header("X-LW-Intent", "stream")
             signRequest(url, "GET", reqBuilder)
             val req = reqBuilder.build()
             client.newCall(req).execute().use { res ->
-                if (!res.isSuccessful) return@withContext Result.failure(Exception("HTTP ${res.code}"))
                 val body = res.body?.string().orEmpty()
+                SourceDebugLogger.log("LastWave-Addon", "Search response HTTP ${res.code} (bytes=${body.length}): ${body.take(300)}")
+                if (!res.isSuccessful) return@withContext Result.failure(Exception("HTTP ${res.code}"))
                 val root = runCatching { json.parseToJsonElement(body) }.getOrNull()
                 val tracks = when (root) {
                     is JsonArray -> runCatching { json.decodeFromJsonElement<List<AddonTrack>>(root) }.getOrNull()
@@ -104,6 +110,7 @@ class AddonClient(
                 Result.success(tracks)
             }
         } catch (e: Exception) {
+            SourceDebugLogger.log("LastWave-Addon", "Search exception for '$query'", e)
             Result.failure(e)
         }
     }
@@ -121,14 +128,16 @@ class AddonClient(
         val url = "$baseUrl/stream/$cleanId?quality=$quality&atmos=$atmosParam"
 
         try {
+            SourceDebugLogger.log("LastWave-Addon", "GET stream URL=$url")
             val reqBuilder = Request.Builder().url(url).get()
                 .header("User-Agent", "LastWave-Player/1.0")
                 .header("X-LW-Intent", "stream")
             signRequest(url, "GET", reqBuilder)
             val req = reqBuilder.build()
             client.newCall(req).execute().use { res ->
-                if (!res.isSuccessful) return@withContext Result.failure(Exception("HTTP ${res.code}"))
                 val body = res.body?.string().orEmpty()
+                SourceDebugLogger.log("LastWave-Addon", "Stream response HTTP ${res.code} (bytes=${body.length}): ${body.take(300)}")
+                if (!res.isSuccessful) return@withContext Result.failure(Exception("HTTP ${res.code}"))
                 val root = runCatching { json.parseToJsonElement(body) }.getOrNull()
                 val streamElement = (root as? JsonObject)?.let { obj ->
                     obj["stream"] ?: obj["data"] ?: obj
@@ -142,6 +151,7 @@ class AddonClient(
                 Result.success(parsed)
             }
         } catch (e: Exception) {
+            SourceDebugLogger.log("LastWave-Addon", "Stream exception for '$trackId'", e)
             Result.failure(e)
         }
     }

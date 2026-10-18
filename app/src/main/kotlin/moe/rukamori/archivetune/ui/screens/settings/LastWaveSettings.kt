@@ -22,6 +22,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -36,6 +40,7 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SettingsTopAppBar
+import moe.rukamori.archivetune.ui.component.SourceLogsDialog
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -49,6 +54,14 @@ fun LastWaveSettings(
     val (hiResFlacEnabled, onHiResFlacChange) = rememberPreference(LastWaveHiResFlacEnabledKey, false)
     val (dolbyAtmEnabled, onDolbyAtmChange) = rememberPreference(LastWaveDolbyAtmosEnabledKey, false)
     val (bit24Enabled, onBit24Change) = rememberPreference(LastWave24BitAudioEnabledKey, false)
+
+    var showSourceLogsDialog by remember { mutableStateOf(false) }
+
+    if (showSourceLogsDialog) {
+        SourceLogsDialog(
+            onDismiss = { showSourceLogsDialog = false },
+        )
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -134,6 +147,21 @@ fun LastWaveSettings(
                         description = stringResource(R.string.lastwave_plugins_summary),
                         icon = { Icon(painterResource(R.drawable.experiment), null) },
                         onClick = { navController.navigate("settings/lastwave/plugins") },
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.padding(8.dp))
+
+            PreferenceGroup(
+                title = "Debugging & Logs",
+            ) {
+                item {
+                    PreferenceEntry(
+                        title = { Text("View Source Debug Logs") },
+                        description = "Inspect real-time API responses and resolution logs for all sources",
+                        icon = { Icon(painterResource(R.drawable.bug_report), null) },
+                        onClick = { showSourceLogsDialog = true },
                     )
                 }
             }

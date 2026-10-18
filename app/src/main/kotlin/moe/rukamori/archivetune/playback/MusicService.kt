@@ -1054,6 +1054,7 @@ class MusicService :
 
     override fun onCreate() {
         super.onCreate()
+        moe.rukamori.archivetune.utils.SourceDebugLogger.init(this)
         equalizerPlaybackController.attach(this)
         ensureScopesActive()
 
@@ -8542,6 +8543,10 @@ class MusicService :
                 val labelQuality = if (is24Bit) "24-bit Hi-Res FLAC" else if (streamResult.isDolbyAtmos || candidate.isDolbyAtmos) "Dolby Atmos" else "Lossless FLAC"
 
                 Timber.tag("MusicService").i("LastWave Addon resolved '%s' -> %s (%s)", query.title, playUrl.take(60), labelQuality)
+                moe.rukamori.archivetune.utils.SourceDebugLogger.log(
+                    "LastWave-Resolver",
+                    "SUCCESS: '${query.title}' -> Track='${candidate.title}' (${candidate.artist}) playUrl=${playUrl.take(100)} mimeType=$mimeType label=$labelQuality",
+                )
 
                 DirectStream(
                     uri = playUrl,
