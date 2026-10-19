@@ -1,13 +1,5 @@
 /*
  * ArchiveTune (2026)
- * © vossgraves — github.com/vossgraves
- * GPL-3.0 License | Contributors: see git history
- * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
- */
-
-/*
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
@@ -69,13 +61,17 @@ internal class TidalProgressiveDashDataSource(
                 'C'.code.toByte(),
             ) + fetchSegment(urls.first(), 0)
         pendingOffset = 0
-        bytesRemaining = C.LENGTH_UNSET.toLong()
+        val estimatedTotalBytes = pendingBytes.size.toLong() + (urls.size - 1).toLong() * 200_000L
+        bytesRemaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) {
+            dataSpec.length
+        } else {
+            (estimatedTotalBytes - dataSpec.position).coerceAtLeast(1L)
+        }
         opened = true
         transferStarted(dataSpec)
 
         try {
-            if (dataSpec.position > 0L) skipFully(dataSpec.position)
-            bytesRemaining = dataSpec.length
+            if (dataSpec.position > 0L) seekToPosition(dataSpec.position)
             return bytesRemaining
         } catch (error: CancellationException) {
             close()
@@ -156,15 +152,32 @@ internal class TidalProgressiveDashDataSource(
         }
     }
 
-    private fun skipFully(bytesToSkip: Long) {
+    private fun seekToPosition(bytesToSkip: Long) {
         var remaining = bytesToSkip
-        val scratch = ByteArray(16 * 1024)
-        while (remaining > 0L) {
-            val read = read(scratch, 0, minOf(remaining, scratch.size.toLong()).toInt())
-            if (read == C.RESULT_END_OF_INPUT) {
-                throw IOException("TIDAL progressive stream ended before the requested position")
+        if (remaining <= pendingBytes.size) {
+            pendingOffset = remaining.toInt()
+            return
+        }
+
+        remaining -= pendingBytes.size
+        pendingBytes = ByteArray(0)
+        pendingOffset = 0
+
+        while (remaining > 0L && nextSegmentIndex < segmentUrls.size) {
+            val payload = fetchSegment(segmentUrls[nextSegmentIndex], nextSegmentIndex)
+            nextSegmentIndex++
+            if (remaining < payload.size) {
+                pendingBytes = payload
+                pendingOffset = remaining.toInt()
+                remaining = 0L
+                break
+            } else {
+                remaining -= payload.size
             }
-            remaining -= read
+        }
+
+        if (remaining > 0L) {
+            throw IOException("TIDAL progressive stream ended before the requested position")
         }
     }
 

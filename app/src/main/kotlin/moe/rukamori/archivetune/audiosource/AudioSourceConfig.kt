@@ -328,6 +328,7 @@ object AudioSourceConfig {
      */
     val DEFAULT_ORDER: List<AudioSourceType> =
         listOf(
+            AudioSourceType.LASTWAVE,
             AudioSourceType.TIDAL,
             AudioSourceType.QOBUZ,
             AudioSourceType.QOBUZ_BACKUP,

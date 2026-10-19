@@ -1825,6 +1825,7 @@ private fun multiplierToSlider(multiplier: Float): Float {
 
 private fun AudioSourceType.sourceLabelRes(): Int =
     when (this) {
+        AudioSourceType.LASTWAVE -> R.string.source_lastwave
         AudioSourceType.TIDAL -> R.string.source_tidal
         AudioSourceType.QOBUZ -> R.string.source_qobuz
         AudioSourceType.QOBUZ_BACKUP -> R.string.source_qobuz_backup
@@ -1838,13 +1839,12 @@ private fun AudioSourceType.sourceLabelRes(): Int =
 
 private fun AudioSourceType.sourceIconRes(): Int =
     when (this) {
+        AudioSourceType.LASTWAVE -> R.drawable.bolt
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.APPLE -> R.drawable.ic_music
-        // No dedicated Amazon Music mark ships in drawable/ yet; ic_music is the same
-        // stand-in APPLE uses above for the same reason.
         AudioSourceType.AMAZON -> R.drawable.ic_music
         AudioSourceType.QQ -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn

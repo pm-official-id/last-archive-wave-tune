@@ -22,6 +22,7 @@ import moe.rukamori.archivetune.constants.AmazonBypassTokenKey
 import moe.rukamori.archivetune.constants.AmazonInstancesKey
 import moe.rukamori.archivetune.constants.AmazonTurnstileJwtExpiryMsKey
 import moe.rukamori.archivetune.constants.AmazonTurnstileJwtKey
+import moe.rukamori.archivetune.constants.LastWaveStreamingAddonUrlKey
 import moe.rukamori.archivetune.qqmusic.QqMusicApi
 import moe.rukamori.archivetune.qqmusic.QqMusicSession
 import moe.rukamori.archivetune.constants.AudioSourceType
@@ -70,6 +71,7 @@ object SourceCheckService {
     suspend fun check(source: AudioSourceType, context: Context): SourceCheckResult =
         withContext(Dispatchers.IO) {
             when (source) {
+                AudioSourceType.LASTWAVE -> checkLastWave(context)
                 AudioSourceType.TIDAL -> checkTidal(context)
                 AudioSourceType.QOBUZ -> checkQobuz(context)
                 AudioSourceType.QOBUZ_BACKUP -> checkQobuzBackup()
@@ -84,6 +86,29 @@ object SourceCheckService {
                 )
             }
         }
+
+    private suspend fun checkLastWave(context: Context): SourceCheckResult {
+        val addonUrl = context.dataStore.data.first()[LastWaveStreamingAddonUrlKey].orEmpty()
+        if (addonUrl.isBlank()) {
+            return SourceCheckResult(
+                healthy = false,
+                summary = "No LastWave streaming addon endpoint configured. Open Settings → Playback → Sources → LastWave Addon to set your streaming addon endpoint URL.",
+            )
+        }
+        val client = moe.rukamori.archivetune.addon.AddonClient(addonUrl, client)
+        val manifest = client.getManifest().getOrNull()
+        return if (manifest != null) {
+            SourceCheckResult(
+                healthy = true,
+                summary = "Connected to LastWave Addon '${manifest.name}' v${manifest.version}. Endpoint is live and responding (HTTP 200). LastWave source is READY.",
+            )
+        } else {
+            SourceCheckResult(
+                healthy = false,
+                summary = "Failed to reach LastWave streaming addon endpoint at $addonUrl. Verify the URL or check your network connection.",
+            )
+        }
+    }
 
     private suspend fun checkQqMusic(context: Context): SourceCheckResult {
         val session =

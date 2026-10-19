@@ -15,24 +15,31 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,11 +59,17 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.LastWaveEnabledKey
+import moe.rukamori.archivetune.constants.LastWaveStreamingAddonUrlKey
+import moe.rukamori.archivetune.constants.LastWaveStreamingQualityKey
+import moe.rukamori.archivetune.constants.ShowSourceInQualityBadgeKey
+import moe.rukamori.archivetune.lossless.LosslessMusicApi
 import moe.rukamori.archivetune.constants.AppleMusicQuality
 import moe.rukamori.archivetune.constants.AppleMusicQualityKey
 import moe.rukamori.archivetune.constants.DeezerAudioQuality
@@ -106,6 +119,7 @@ import kotlinx.coroutines.withContext
 
 private fun AudioSourceType.displayName(context: android.content.Context): String =
     when (this) {
+        AudioSourceType.LASTWAVE -> context.getString(R.string.source_lastwave)
         AudioSourceType.TIDAL -> context.getString(R.string.source_tidal)
         AudioSourceType.QOBUZ -> context.getString(R.string.source_qobuz)
         AudioSourceType.QOBUZ_BACKUP -> context.getString(R.string.source_qobuz_backup)
@@ -119,6 +133,7 @@ private fun AudioSourceType.displayName(context: android.content.Context): Strin
 
 private fun AudioSourceType.iconRes(): Int =
     when (this) {
+        AudioSourceType.LASTWAVE -> R.drawable.bolt
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
@@ -202,6 +217,10 @@ internal fun PlaybackSourceSections(
         }
     }
 
+    val (lastWaveEnabled, onLastWaveEnabledChange) = rememberPreference(LastWaveEnabledKey, true)
+    val (lastWaveQuality, onLastWaveQualityChange) = rememberPreference(LastWaveStreamingQualityKey, LosslessMusicApi.QUALITY_MAX_HI_RES)
+    val (showSourceInBadge, onShowSourceInBadgeChange) = rememberPreference(ShowSourceInQualityBadgeKey, true)
+
     val (tidalAccountFirst, onTidalAccountFirstChange) = rememberPreference(TidalAccountFirstKey, true)
     val (audioQuality, onAudioQualityChange) =
         rememberEnumPreference(TidalAudioQualityKey, TidalAudioQuality.FLAC)
@@ -235,6 +254,7 @@ internal fun PlaybackSourceSections(
 
     fun isEnabled(source: AudioSourceType): Boolean =
         when (source) {
+            AudioSourceType.LASTWAVE -> lastWaveEnabled
             AudioSourceType.TIDAL -> tidalEnabled
             AudioSourceType.QOBUZ -> qobuzEnabled
             AudioSourceType.QOBUZ_BACKUP -> qobuzBackupEnabled
@@ -255,6 +275,7 @@ internal fun PlaybackSourceSections(
     fun onOrderConfirm(newOrder: List<AudioSourceType>) {
         newOrder.firstOrNull()?.let { top ->
             when (top) {
+                AudioSourceType.LASTWAVE -> if (!lastWaveEnabled) onLastWaveEnabledChange(true)
                 AudioSourceType.TIDAL -> if (!tidalEnabled) onTidalEnabledChange(true)
                 AudioSourceType.QOBUZ -> if (!qobuzEnabled) onQobuzEnabledChange(true)
                 AudioSourceType.QOBUZ_BACKUP -> if (!qobuzBackupEnabled) onQobuzBackupEnabledChange(true)
@@ -734,6 +755,208 @@ internal fun PlaybackSourceSections(
 
         item {
             SourceCheckRow(source = AudioSourceType.JIOSAAVN)
+        }
+    }
+
+    PreferenceGroup(title = stringResource(R.string.source_lastwave)) {
+        item {
+            SwitchPreference(
+                modifier = positions.modifierFor("lastwave_enable"),
+                title = { Text(stringResource(R.string.lastwave_enable)) },
+                description = stringResource(R.string.lastwave_enable_description),
+                icon = { Icon(painterResource(R.drawable.bolt), null) },
+                checked = lastWaveEnabled,
+                onCheckedChange = onLastWaveEnabledChange,
+            )
+        }
+
+        if (lastWaveEnabled) {
+            item {
+                LastWaveQualitySelector(
+                    selectedFormatId = lastWaveQuality,
+                    onSelectFormatId = onLastWaveQualityChange,
+                )
+            }
+
+            item {
+                SwitchPreference(
+                    modifier = positions.modifierFor("show_source_in_quality_badge"),
+                    title = { Text(stringResource(R.string.show_source_in_quality_badge)) },
+                    description = stringResource(R.string.show_source_in_quality_badge_desc),
+                    icon = { Icon(painterResource(R.drawable.info), null) },
+                    checked = showSourceInBadge,
+                    onCheckedChange = onShowSourceInBadgeChange,
+                )
+            }
+
+            item {
+                SourceCheckRow(source = AudioSourceType.LASTWAVE)
+            }
+        }
+    }
+}
+
+private data class LastWaveQualityOption(
+    val formatId: Int,
+    val title: String,
+    val badge: String,
+    val description: String,
+)
+
+private val lastWaveQualityOptions = listOf(
+    LastWaveQualityOption(
+        formatId = LosslessMusicApi.QUALITY_DOLBY_ATMOS,
+        title = "Dolby Atmos",
+        badge = "ATMOS",
+        description = "Spatial Immersive Audio · Master Audio",
+    ),
+    LastWaveQualityOption(
+        formatId = LosslessMusicApi.QUALITY_MAX_HI_RES,
+        title = "Hi-Res Audio (Max)",
+        badge = "24-BIT / 192k",
+        description = "Up to 24-bit / 192 kHz · Lossless Studio FLAC",
+    ),
+    LastWaveQualityOption(
+        formatId = LosslessMusicApi.QUALITY_HI_RES_96,
+        title = "Hi-Res Audio",
+        badge = "24-BIT / 96k",
+        description = "24-bit / 96 kHz · Lossless Studio FLAC",
+    ),
+    LastWaveQualityOption(
+        formatId = LosslessMusicApi.QUALITY_CD_LOSSLESS,
+        title = "CD Lossless",
+        badge = "16-BIT / 44.1k",
+        description = "16-bit / 44.1 kHz · Lossless CD FLAC",
+    ),
+    LastWaveQualityOption(
+        formatId = LosslessMusicApi.QUALITY_MP3_320,
+        title = "Standard Quality",
+        badge = "320 kbps",
+        description = "320 kbps · MP3 / AAC",
+    ),
+    LastWaveQualityOption(
+        formatId = LosslessMusicApi.QUALITY_DATA_SAVER,
+        title = "Data Saver",
+        badge = "96 kbps",
+        description = "96 kbps · High Efficiency AAC",
+    ),
+    LastWaveQualityOption(
+        formatId = LosslessMusicApi.QUALITY_YOUTUBE,
+        title = "YouTube Music",
+        badge = "YOUTUBE",
+        description = "128-256 kbps · YouTube Music AAC / Opus stream",
+    ),
+)
+
+@Composable
+private fun LastWaveQualitySelector(
+    selectedFormatId: Int,
+    onSelectFormatId: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.size(36.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text("HQ", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = "Streaming Quality",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = "Select preferred audio resolution & bit depth",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        Text(
+            text = "YouTube Music plays strictly as-is (never upgrades). Dolby Atmos plays only when selected — otherwise it never plays. Atmos falls back to Hi-Res → CD → 320 kbps → YouTube. Hi-Res steps down to lower lossless tiers, then YouTube last.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+
+        lastWaveQualityOptions.forEach { option ->
+            val isSelected = selectedFormatId == option.formatId
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = if (isSelected) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                border = BorderStroke(
+                    width = if (isSelected) 1.5.dp else 1.dp,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp)
+                    .clickable { onSelectFormatId(option.formatId) },
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = option.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                            ) {
+                                Text(
+                                    text = option.badge,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = option.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    if (isSelected) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    painter = painterResource(R.drawable.check),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

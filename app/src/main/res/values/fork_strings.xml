@@ -163,4 +163,12 @@
     <!-- TikTok player: karaoke caption strip under the artwork. -->
     <string name="tiktok_main_lyrics">Show lyrics on main player</string>
     <string name="tiktok_main_lyrics_desc">Display a karaoke lyrics strip with word animation, translation and romanisation on the TikTok player screen, aligned with the song info</string>
+
+    <!-- LastWave source (ui/screens/settings/PlaybackSourceSections.kt) -->
+    <string name="source_lastwave">LastWave Addon</string>
+    <string name="lastwave_specific">LastWave Addon</string>
+    <string name="lastwave_enable">Enable LastWave source</string>
+    <string name="lastwave_enable_description">Use LastWave streaming addons for Hi-Res Lossless FLAC &amp; Dolby Atmos</string>
+    <string name="show_source_in_quality_badge">Show Source in Quality Badge</string>
+    <string name="show_source_in_quality_badge_desc">Appends active source name (LastWave, YouTube, Tidal, Deezer, etc.) to player quality badge</string>
 </resources>
