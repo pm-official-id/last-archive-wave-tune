@@ -7161,10 +7161,18 @@ class MusicService :
     }
 
     private fun createResolvedUpstreamDataSourceFactory(): DataSource.Factory {
+        val okHttpDataSourceFactory = OkHttpDataSource.Factory(mediaOkHttpClient)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "Accept" to "audio/flac,audio/mp4,audio/*,*/*;q=0.8",
+                    "Accept-Encoding" to "identity",
+                )
+            )
+
         val youtubeMediaFactory =
             DefaultDataSource.Factory(
                 this,
-                OkHttpDataSource.Factory(mediaOkHttpClient),
+                okHttpDataSourceFactory,
             )
         // Resolved source URIs pass through this factory a second time after the outer resolver has
         // selected a provider. Route those private schemes here instead of asking DefaultDataSource
