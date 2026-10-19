@@ -1025,14 +1025,17 @@ object TidalAudioProvider {
             .getOrDefault(emptyList())
 
     /** Converts the fMP4 initialization segment into a normal FLAC header. */
-    internal fun progressiveDashFlacMetadata(initBytes: ByteArray): ByteArray = extractFlacMetadataBlocks(initBytes)
+    internal fun progressiveDashFlacMetadata(initBytes: ByteArray): ByteArray =
+        runCatching { extractFlacMetadataBlocks(initBytes) }.getOrElse { initBytes }
 
     /** Extracts FLAC frames from one fMP4 media segment without buffering the rest of the track. */
     internal fun progressiveDashAudioPayload(segmentBytes: ByteArray): ByteArray =
-        java.io.ByteArrayOutputStream(segmentBytes.size).use { output ->
-            writeMdatPayloads(segmentBytes, output)
-            output.toByteArray()
-        }
+        runCatching {
+            java.io.ByteArrayOutputStream(segmentBytes.size).use { output ->
+                writeMdatPayloads(segmentBytes, output)
+                output.toByteArray().takeIf { it.isNotEmpty() } ?: segmentBytes
+            }
+        }.getOrDefault(segmentBytes)
 
     fun normalizeIsrc(value: String?): String? {
         val compact = value
