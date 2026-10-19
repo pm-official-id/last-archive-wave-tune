@@ -105,10 +105,10 @@ object SourceCheckService {
 
         for (url in addonUrls) {
             val client = moe.rukamori.archivetune.addon.AddonClient(url, client)
-            val manifest = client.getManifest().getOrNull()
+            val manifest = client.manifest().getOrNull()
             if (manifest != null) {
                 anyHealthy = true
-                results.add("• $url: READY ('${manifest.name}' v${manifest.version})")
+                results.add("• $url: READY ('${manifest.displayName}' v${manifest.version})")
             } else {
                 results.add("• $url: UNREACHABLE")
             }
