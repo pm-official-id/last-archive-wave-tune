@@ -114,7 +114,7 @@ android {
     ndkVersion = "30.0.16248370"
 
     defaultConfig {
-    applicationId = "moe.rukamori.archivetune"
+        applicationId = "com.lastarchivewavetune.app"
         minSdk = 26
         targetSdk = 37
         // Version. Locally the committed base values are used. In CI, the release/canary
