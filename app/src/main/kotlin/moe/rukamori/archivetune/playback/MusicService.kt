@@ -239,6 +239,7 @@ import moe.rukamori.archivetune.qqmusic.QqMusicAudioProvider
 import moe.rukamori.archivetune.qqmusic.QqMusicSession
 import moe.rukamori.archivetune.constants.DEFAULT_LASTWAVE_ADDON_URL
 import moe.rukamori.archivetune.constants.LastWaveEnabledKey
+import moe.rukamori.archivetune.constants.LastWavePluginsEnabledKey
 import moe.rukamori.archivetune.constants.LastWaveStreamingAddonUrlKey
 import moe.rukamori.archivetune.constants.LastWaveStreamingQualityKey
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
@@ -7275,6 +7276,7 @@ class MusicService :
             mapOf(
                 // Defaults MUST match the toggle defaults in PlaybackSourceSections so the
                 // UI and the resolver agree on which sources are active out of the box.
+                AudioSourceType.LASTWAVE to (dataStore.get(LastWaveEnabledKey, true) || dataStore.get(LastWavePluginsEnabledKey, true)),
                 AudioSourceType.TIDAL to dataStore.get(TidalEnabledKey, true),
                 AudioSourceType.QOBUZ to dataStore.get(QobuzEnabledKey, false),
                 AudioSourceType.QOBUZ_BACKUP to dataStore.get(QobuzBackupEnabledKey, false),
@@ -7306,7 +7308,7 @@ class MusicService :
      */
     private fun isSourceEnabled(source: AudioSourceType): Boolean =
         when (source) {
-            AudioSourceType.LASTWAVE -> dataStore.get(LastWaveEnabledKey, true)
+            AudioSourceType.LASTWAVE -> dataStore.get(LastWaveEnabledKey, true) || dataStore.get(LastWavePluginsEnabledKey, true)
             AudioSourceType.YOUTUBE -> dataStore.get(YouTubeSourceEnabledKey, true)
             AudioSourceType.TIDAL -> dataStore.get(TidalEnabledKey, true)
             AudioSourceType.QOBUZ -> dataStore.get(QobuzEnabledKey, false)

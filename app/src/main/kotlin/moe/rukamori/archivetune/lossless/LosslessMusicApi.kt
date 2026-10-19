@@ -683,9 +683,11 @@ class LosslessMusicApi(
     ): LosslessAudioStream? = withContext(Dispatchers.IO) {
         val addonUrlRaw = dataStore.get(LastWaveStreamingAddonUrlKey, DEFAULT_LASTWAVE_ADDON_URL).ifBlank { DEFAULT_LASTWAVE_ADDON_URL }
         val lastWaveEnabled = dataStore.get(LastWaveEnabledKey, true)
+        Log.i(TAG, "resolveStream for '$title' by '$artist' | enabled=$lastWaveEnabled addonUrlRaw=$addonUrlRaw")
         if (!lastWaveEnabled || addonUrlRaw.isBlank()) return@withContext null
 
         val selectedQualityFormat = preferredQuality ?: dataStore.get(LastWaveStreamingQualityKey, QUALITY_MAX_HI_RES)
+        Log.i(TAG, "selectedQualityFormat=$selectedQualityFormat")
         if (selectedQualityFormat == QUALITY_YOUTUBE) return@withContext null
 
         val addonUrls = addonUrlRaw.split(Regex("""[\s,\n]+"""))
