@@ -237,6 +237,7 @@ import moe.rukamori.archivetune.constants.QqMusicAudioQualityKey
 import moe.rukamori.archivetune.constants.YouTubeSourceEnabledKey
 import moe.rukamori.archivetune.qqmusic.QqMusicAudioProvider
 import moe.rukamori.archivetune.qqmusic.QqMusicSession
+import moe.rukamori.archivetune.constants.DEFAULT_LASTWAVE_ADDON_URL
 import moe.rukamori.archivetune.constants.LastWaveEnabledKey
 import moe.rukamori.archivetune.constants.LastWaveStreamingAddonUrlKey
 import moe.rukamori.archivetune.constants.LastWaveStreamingQualityKey
@@ -8388,7 +8389,7 @@ class MusicService :
     }
 
     private fun resolveLastWaveAddonStream(query: SourceQuery): DirectStream? {
-        val addonUrl = dataStore.get(LastWaveStreamingAddonUrlKey, "")
+        val addonUrl = dataStore.get(LastWaveStreamingAddonUrlKey, DEFAULT_LASTWAVE_ADDON_URL).ifBlank { DEFAULT_LASTWAVE_ADDON_URL }
         if (addonUrl.isBlank()) {
             Timber.tag("MusicService").d("LastWave Addon skip: no addon URL configured")
             return null

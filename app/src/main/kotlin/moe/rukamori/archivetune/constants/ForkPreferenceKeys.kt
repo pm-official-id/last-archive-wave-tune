@@ -82,6 +82,8 @@ val LibraryChipOrderKey = stringPreferencesKey("libraryChipOrder")
 val PlaylistTagOrderKey = stringPreferencesKey("playlistTagOrder")
 
 // LastWave Settings Keys
+const val DEFAULT_LASTWAVE_ADDON_URL = "https://lastwaveaddons.clashprojects.qd.je/a/abb2142e064235ff771fad0e98b1baf86dd809b2c6f6bc23d1b31c3f6cfe670b"
+
 val LastWaveEnabledKey = booleanPreferencesKey("lastWaveEnabled")
 val LastWaveStreamingQualityKey = intPreferencesKey("lastWaveStreamingQuality")
 val LastWaveStreamingAddonUrlKey = stringPreferencesKey("lastWaveStreamingAddonUrl")

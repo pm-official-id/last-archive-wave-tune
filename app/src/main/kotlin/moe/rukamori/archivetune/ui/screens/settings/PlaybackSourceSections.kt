@@ -66,6 +66,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.DEFAULT_LASTWAVE_ADDON_URL
 import moe.rukamori.archivetune.constants.LastWaveEnabledKey
 import moe.rukamori.archivetune.constants.LastWaveStreamingAddonUrlKey
 import moe.rukamori.archivetune.constants.LastWaveStreamingQualityKey
@@ -220,7 +221,7 @@ internal fun PlaybackSourceSections(
 
     val (lastWaveEnabled, onLastWaveEnabledChange) = rememberPreference(LastWaveEnabledKey, true)
     val (lastWaveQuality, onLastWaveQualityChange) = rememberPreference(LastWaveStreamingQualityKey, LosslessMusicApi.QUALITY_MAX_HI_RES)
-    val (lastWaveAddonUrl, onLastWaveAddonUrlChange) = rememberPreference(LastWaveStreamingAddonUrlKey, "")
+    val (lastWaveAddonUrl, onLastWaveAddonUrlChange) = rememberPreference(LastWaveStreamingAddonUrlKey, DEFAULT_LASTWAVE_ADDON_URL)
     val (showSourceInBadge, onShowSourceInBadgeChange) = rememberPreference(ShowSourceInQualityBadgeKey, true)
 
     val (tidalAccountFirst, onTidalAccountFirstChange) = rememberPreference(TidalAccountFirstKey, true)

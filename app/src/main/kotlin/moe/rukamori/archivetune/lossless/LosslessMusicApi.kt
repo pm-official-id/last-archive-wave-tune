@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import moe.rukamori.archivetune.addon.AddonClient
+import moe.rukamori.archivetune.constants.DEFAULT_LASTWAVE_ADDON_URL
 import moe.rukamori.archivetune.constants.LastWaveEnabledKey
 import moe.rukamori.archivetune.constants.LastWaveStreamingAddonUrlKey
 import moe.rukamori.archivetune.constants.LastWaveStreamingQualityKey
@@ -680,7 +681,7 @@ class LosslessMusicApi(
         expectedAlbum: String? = null,
         preferredQuality: Int? = null,
     ): LosslessAudioStream? = withContext(Dispatchers.IO) {
-        val addonUrlRaw = dataStore.get(LastWaveStreamingAddonUrlKey, "")
+        val addonUrlRaw = dataStore.get(LastWaveStreamingAddonUrlKey, DEFAULT_LASTWAVE_ADDON_URL).ifBlank { DEFAULT_LASTWAVE_ADDON_URL }
         val lastWaveEnabled = dataStore.get(LastWaveEnabledKey, true)
         if (!lastWaveEnabled || addonUrlRaw.isBlank()) return@withContext null
 
