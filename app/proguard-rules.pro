@@ -202,6 +202,10 @@
 -keep class org.drinkless.tdlib.** { *; }
 -dontwarn org.drinkless.tdlib.**
 
+## LastWave Addon Protection Rules
+-keep class moe.rukamori.archivetune.addon.** { *; }
+-keep class moe.rukamori.archivetune.lossless.** { *; }
+
 ## Listen Together — protobuf-javalite wire protocol
 # javalite 4.x generated code passes the message field NAMES as strings
 # ("username_", "room_code_", ...) into RawMessageInfo, and the

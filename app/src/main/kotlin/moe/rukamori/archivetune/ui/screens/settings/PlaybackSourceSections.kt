@@ -531,6 +531,97 @@ internal fun PlaybackSourceSections(
         }
     }
 
+    var showAddonUrlDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showAddonUrlDialog) {
+        var tempUrl by rememberSaveable { mutableStateOf(lastWaveAddonUrl) }
+        DefaultDialog(
+            onDismiss = { showAddonUrlDialog = false },
+            content = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Streaming Addon Endpoint URL(s)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "Enter one or multiple addon endpoint URLs (comma or newline separated, e.g. https://lastwaveaddons.clashprojects.qd.je/a/YOUR_SECRET_KEY)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = tempUrl,
+                        onValueChange = { tempUrl = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("https://lastwaveaddons.clashprojects.qd.je/a/YOUR_KEY") },
+                        singleLine = false,
+                        maxLines = 4,
+                    )
+                }
+            },
+            buttons = {
+                TextButton(onClick = { showAddonUrlDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+                Spacer(Modifier.width(8.dp))
+                TextButton(
+                    onClick = {
+                        onLastWaveAddonUrlChange(tempUrl)
+                        showAddonUrlDialog = false
+                    },
+                ) {
+                    Text(stringResource(R.string.save))
+                }
+            },
+        )
+    }
+
+    PreferenceGroup(title = stringResource(R.string.source_lastwave)) {
+        item {
+            SwitchPreference(
+                modifier = positions.modifierFor("lastwave_enable"),
+                title = { Text(stringResource(R.string.lastwave_enable)) },
+                description = stringResource(R.string.lastwave_enable_description),
+                icon = { Icon(painterResource(R.drawable.bolt), null) },
+                checked = lastWaveEnabled,
+                onCheckedChange = onLastWaveEnabledChange,
+            )
+        }
+
+        if (lastWaveEnabled) {
+            item {
+                PreferenceEntry(
+                    title = { Text("Streaming Addon Endpoint URL(s)") },
+                    description = if (lastWaveAddonUrl.isNotBlank()) lastWaveAddonUrl else "Tap to configure LastWave addon endpoint URL(s)",
+                    icon = { Icon(painterResource(R.drawable.link), null) },
+                    onClick = { showAddonUrlDialog = true },
+                )
+            }
+
+            item {
+                LastWaveQualitySelector(
+                    selectedFormatId = lastWaveQuality,
+                    onSelectFormatId = onLastWaveQualityChange,
+                )
+            }
+
+            item {
+                SwitchPreference(
+                    modifier = positions.modifierFor("show_source_in_quality_badge"),
+                    title = { Text(stringResource(R.string.show_source_in_quality_badge)) },
+                    description = stringResource(R.string.show_source_in_quality_badge_desc),
+                    icon = { Icon(painterResource(R.drawable.info), null) },
+                    checked = showSourceInBadge,
+                    onCheckedChange = onShowSourceInBadgeChange,
+                )
+            }
+
+            item {
+                SourceCheckRow(source = AudioSourceType.LASTWAVE)
+            }
+        }
+    }
+
     PreferenceGroup(title = stringResource(R.string.qobuz_specific)) {
         item {
             SwitchPreference(
@@ -758,97 +849,6 @@ internal fun PlaybackSourceSections(
 
         item {
             SourceCheckRow(source = AudioSourceType.JIOSAAVN)
-        }
-    }
-
-    var showAddonUrlDialog by rememberSaveable { mutableStateOf(false) }
-
-    if (showAddonUrlDialog) {
-        var tempUrl by rememberSaveable { mutableStateOf(lastWaveAddonUrl) }
-        DefaultDialog(
-            onDismiss = { showAddonUrlDialog = false },
-            content = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Streaming Addon Endpoint URL(s)",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = "Enter one or multiple addon endpoint URLs (comma or newline separated, e.g. https://lastwaveaddons.clashprojects.qd.je/a/YOUR_SECRET_KEY)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    OutlinedTextField(
-                        value = tempUrl,
-                        onValueChange = { tempUrl = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("https://lastwaveaddons.clashprojects.qd.je/a/YOUR_KEY") },
-                        singleLine = false,
-                        maxLines = 4,
-                    )
-                }
-            },
-            buttons = {
-                TextButton(onClick = { showAddonUrlDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-                Spacer(Modifier.width(8.dp))
-                TextButton(
-                    onClick = {
-                        onLastWaveAddonUrlChange(tempUrl)
-                        showAddonUrlDialog = false
-                    },
-                ) {
-                    Text(stringResource(R.string.save))
-                }
-            },
-        )
-    }
-
-    PreferenceGroup(title = stringResource(R.string.source_lastwave)) {
-        item {
-            SwitchPreference(
-                modifier = positions.modifierFor("lastwave_enable"),
-                title = { Text(stringResource(R.string.lastwave_enable)) },
-                description = stringResource(R.string.lastwave_enable_description),
-                icon = { Icon(painterResource(R.drawable.bolt), null) },
-                checked = lastWaveEnabled,
-                onCheckedChange = onLastWaveEnabledChange,
-            )
-        }
-
-        if (lastWaveEnabled) {
-            item {
-                PreferenceEntry(
-                    title = { Text("Streaming Addon Endpoint URL(s)") },
-                    description = if (lastWaveAddonUrl.isNotBlank()) lastWaveAddonUrl else "Tap to configure LastWave addon endpoint URL(s)",
-                    icon = { Icon(painterResource(R.drawable.link), null) },
-                    onClick = { showAddonUrlDialog = true },
-                )
-            }
-
-            item {
-                LastWaveQualitySelector(
-                    selectedFormatId = lastWaveQuality,
-                    onSelectFormatId = onLastWaveQualityChange,
-                )
-            }
-
-            item {
-                SwitchPreference(
-                    modifier = positions.modifierFor("show_source_in_quality_badge"),
-                    title = { Text(stringResource(R.string.show_source_in_quality_badge)) },
-                    description = stringResource(R.string.show_source_in_quality_badge_desc),
-                    icon = { Icon(painterResource(R.drawable.info), null) },
-                    checked = showSourceInBadge,
-                    onCheckedChange = onShowSourceInBadgeChange,
-                )
-            }
-
-            item {
-                SourceCheckRow(source = AudioSourceType.LASTWAVE)
-            }
         }
     }
 }
