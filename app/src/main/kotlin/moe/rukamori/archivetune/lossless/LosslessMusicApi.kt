@@ -802,62 +802,81 @@ class LosslessMusicApi(
             return null
         }
 
-        val wantAtmos = isAtmosPreferred
         val wantsHiRes = preferredQuality == QUALITY_MAX_HI_RES || preferredQuality == QUALITY_HI_RES_96
 
-        for (candidate in candidates.take(4)) {
-            currentCoroutineContext().ensureActive()
-            val trackId = candidate.rawAddonId.ifBlank { candidate.id.toString() }
-            val streamResult = addonClient.stream(trackId, qualityParam, wantAtmos)
-            val stream = streamResult.getOrNull()
+        val qualitiesToTry = when {
+            isAtmosPreferred -> listOf("atmos", "hi_res", "lossless", "high")
+            qualityParam == "hi_res" -> listOf("hi_res", "lossless", "high")
+            qualityParam == "lossless" -> listOf("lossless", "hi_res", "high")
+            qualityParam == "high" -> listOf("high", "lossless", "hi_res")
+            qualityParam == "low" -> listOf("low", "high", "lossless", "hi_res")
+            else -> listOf(qualityParam, "lossless", "high")
+        }
 
-            val rawUrl = stream?.dataUrl?.takeIf { it.isNotBlank() }
-                ?: stream?.url?.takeIf { it.isNotBlank() }
-                ?: candidate.directStreamUrl?.takeIf { it.isNotBlank() }
-                ?: continue
-
-            if (isDecoyStream(rawUrl)) continue
-
-            val isStreamAtmos = stream?.isDolbyAtmos == true || isAtmosCodec(stream?.codec) || isAtmosStreamUrl(rawUrl)
-            val manifestSampleRate = manifestSampleRateOf(rawUrl)
-            val manifestDepth = manifestBitDepthOf(rawUrl)
-            val streamSampleRate = stream?.sampleRate ?: 0.0
-            val rawSampleRate = if (streamSampleRate > 1000.0) streamSampleRate else if (streamSampleRate > 0.0) streamSampleRate * 1000.0 else 44100.0
-            val effectiveSampleRate = manifestSampleRate?.toDouble() ?: rawSampleRate
-
-            val reportedDepth = manifestDepth ?: stream?.bitDepth?.takeIf { it > 0 } ?: candidate.bitDepth?.takeIf { it > 0 }
-            val effectiveBitDepth = when {
-                (reportedDepth ?: 0) > 0 -> reportedDepth
-                effectiveSampleRate > 192000.0 -> 32
-                wantsHiRes -> 24
-                else -> null
+        for (q in qualitiesToTry) {
+            val wantAtmos = q == "atmos"
+            val targetCandidates = if (wantAtmos) {
+                val atmosMatches = candidates.filter { isAtmosCandidate(it) }
+                if (atmosMatches.isNotEmpty()) atmosMatches else candidates
+            } else {
+                val stereoMatches = candidates.filter { !isAtmosCandidate(it) }
+                if (stereoMatches.isNotEmpty()) stereoMatches else candidates
             }
 
-            val formatId = when {
-                isStreamAtmos -> QUALITY_DOLBY_ATMOS
-                (effectiveBitDepth ?: 0) > 16 || effectiveSampleRate > 48000.0 -> QUALITY_MAX_HI_RES
-                else -> QUALITY_CD_LOSSLESS
-            }
+            for (candidate in targetCandidates.take(4)) {
+                currentCoroutineContext().ensureActive()
+                val trackId = candidate.rawAddonId.ifBlank { candidate.id.toString() }
+                val streamResult = addonClient.stream(trackId, q, wantAtmos)
+                val stream = streamResult.getOrNull()
 
-            val lowerUrlPath = rawUrl.substringBefore('?').lowercase()
-            val streamMimeType = when {
-                rawUrl.startsWith("data:application/dash+xml") -> "application/dash+xml"
-                lowerUrlPath.endsWith(".mpd") -> "application/dash+xml"
-                isStreamAtmos -> "audio/mp4"
-                lowerUrlPath.endsWith(".flac") -> "audio/flac"
-                lowerUrlPath.endsWith(".mp4") || lowerUrlPath.endsWith(".m4a") -> "audio/mp4"
-                else -> "application/dash+xml"
-            }
+                val rawUrl = stream?.dataUrl?.takeIf { it.isNotBlank() }
+                    ?: stream?.url?.takeIf { it.isNotBlank() }
+                    ?: candidate.directStreamUrl?.takeIf { it.isNotBlank() }
+                    ?: continue
 
-            return LosslessAudioStream(
-                url = rawUrl,
-                mimeType = streamMimeType,
-                bitDepth = effectiveBitDepth ?: 16,
-                samplingRate = effectiveSampleRate / 1000.0,
-                formatId = formatId,
-                trackId = candidate.id,
-                durationSeconds = candidate.duration,
-            )
+                if (isDecoyStream(rawUrl)) continue
+
+                val isStreamAtmos = stream?.isDolbyAtmos == true || isAtmosCodec(stream?.codec) || isAtmosStreamUrl(rawUrl)
+                val manifestSampleRate = manifestSampleRateOf(rawUrl)
+                val manifestDepth = manifestBitDepthOf(rawUrl)
+                val streamSampleRate = stream?.sampleRate ?: 0.0
+                val rawSampleRate = if (streamSampleRate > 1000.0) streamSampleRate else if (streamSampleRate > 0.0) streamSampleRate * 1000.0 else 44100.0
+                val effectiveSampleRate = manifestSampleRate?.toDouble() ?: rawSampleRate
+
+                val reportedDepth = manifestDepth ?: stream?.bitDepth?.takeIf { it > 0 } ?: candidate.bitDepth?.takeIf { it > 0 }
+                val effectiveBitDepth = when {
+                    (reportedDepth ?: 0) > 0 -> reportedDepth
+                    effectiveSampleRate > 192000.0 -> 32
+                    wantsHiRes -> 24
+                    else -> null
+                }
+
+                val formatId = when {
+                    isStreamAtmos -> QUALITY_DOLBY_ATMOS
+                    (effectiveBitDepth ?: 0) > 16 || effectiveSampleRate > 48000.0 -> QUALITY_MAX_HI_RES
+                    else -> QUALITY_CD_LOSSLESS
+                }
+
+                val lowerUrlPath = rawUrl.substringBefore('?').lowercase()
+                val streamMimeType = when {
+                    rawUrl.startsWith("data:application/dash+xml") -> "application/dash+xml"
+                    lowerUrlPath.endsWith(".mpd") -> "application/dash+xml"
+                    isStreamAtmos -> "audio/mp4"
+                    lowerUrlPath.endsWith(".flac") -> "audio/flac"
+                    lowerUrlPath.endsWith(".mp4") || lowerUrlPath.endsWith(".m4a") -> "audio/mp4"
+                    else -> "application/dash+xml"
+                }
+
+                return LosslessAudioStream(
+                    url = rawUrl,
+                    mimeType = streamMimeType,
+                    bitDepth = effectiveBitDepth ?: 16,
+                    samplingRate = effectiveSampleRate / 1000.0,
+                    formatId = formatId,
+                    trackId = candidate.id,
+                    durationSeconds = candidate.duration,
+                )
+            }
         }
         return null
     }
