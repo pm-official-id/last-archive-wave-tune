@@ -160,23 +160,32 @@ class LosslessMusicApi(
         expectedAlbum: String? = null,
         preferredQuality: Int? = null,
     ): LosslessAudioStream? = withContext(Dispatchers.IO) {
-        val addonUrl = dataStore.get(LastWaveStreamingAddonUrlKey, "")
+        val addonUrlRaw = dataStore.get(LastWaveStreamingAddonUrlKey, "")
         val lastWaveEnabled = dataStore.get(LastWaveEnabledKey, true)
-        if (!lastWaveEnabled || addonUrl.isBlank()) return@withContext null
+        if (!lastWaveEnabled || addonUrlRaw.isBlank()) return@withContext null
 
         val selectedQualityFormat = preferredQuality ?: dataStore.get(LastWaveStreamingQualityKey, QUALITY_MAX_HI_RES)
         if (selectedQualityFormat == QUALITY_YOUTUBE) return@withContext null
 
-        Log.i(TAG, "resolveStream starting for '$title' by '$artist' via addon (url=$addonUrl, qualityFormat=$selectedQualityFormat)")
+        val addonUrls = addonUrlRaw.split(Regex("""[\s,\n]+"""))
+            .map { it.trim().removeSuffix("/") }
+            .filter { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) }
 
-        return@withContext resolveFromAddon(
-            title = title,
-            artist = artist,
-            expectedDurationSeconds = expectedDurationSeconds,
-            expectedAlbum = expectedAlbum,
-            preferredQuality = selectedQualityFormat,
-            addonBaseUrl = addonUrl,
-        )
+        if (addonUrls.isEmpty()) return@withContext null
+
+        for (addonUrl in addonUrls) {
+            Log.i(TAG, "resolveStream attempting for '$title' by '$artist' via addon ($addonUrl)")
+            val stream = resolveFromAddon(
+                title = title,
+                artist = artist,
+                expectedDurationSeconds = expectedDurationSeconds,
+                expectedAlbum = expectedAlbum,
+                preferredQuality = selectedQualityFormat,
+                addonBaseUrl = addonUrl,
+            )
+            if (stream != null) return@withContext stream
+        }
+        return@withContext null
     }
 
     private suspend fun resolveFromAddon(

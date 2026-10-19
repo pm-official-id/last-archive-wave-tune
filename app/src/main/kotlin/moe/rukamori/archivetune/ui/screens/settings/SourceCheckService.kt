@@ -88,26 +88,46 @@ object SourceCheckService {
         }
 
     private suspend fun checkLastWave(context: Context): SourceCheckResult {
-        val addonUrl = context.dataStore.data.first()[LastWaveStreamingAddonUrlKey].orEmpty()
-        if (addonUrl.isBlank()) {
+        val addonUrlRaw = context.dataStore.data.first()[LastWaveStreamingAddonUrlKey].orEmpty()
+        val addonUrls = addonUrlRaw.split(Regex("""[\s,\n]+"""))
+            .map { it.trim().removeSuffix("/") }
+            .filter { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) }
+
+        if (addonUrls.isEmpty()) {
             return SourceCheckResult(
                 healthy = false,
                 summary = "No LastWave streaming addon endpoint configured. Open Settings → Playback → Sources → LastWave Addon to set your streaming addon endpoint URL.",
             )
         }
-        val client = moe.rukamori.archivetune.addon.AddonClient(addonUrl, client)
-        val manifest = client.getManifest().getOrNull()
-        return if (manifest != null) {
-            SourceCheckResult(
-                healthy = true,
-                summary = "Connected to LastWave Addon '${manifest.name}' v${manifest.version}. Endpoint is live and responding (HTTP 200). LastWave source is READY.",
-            )
-        } else {
-            SourceCheckResult(
-                healthy = false,
-                summary = "Failed to reach LastWave streaming addon endpoint at $addonUrl. Verify the URL or check your network connection.",
-            )
+
+        val results = mutableListOf<String>()
+        var anyHealthy = false
+
+        for (url in addonUrls) {
+            val client = moe.rukamori.archivetune.addon.AddonClient(url, client)
+            val manifest = client.getManifest().getOrNull()
+            if (manifest != null) {
+                anyHealthy = true
+                results.add("• $url: READY ('${manifest.name}' v${manifest.version})")
+            } else {
+                results.add("• $url: UNREACHABLE")
+            }
         }
+
+        val summary = buildString {
+            append("Configured Addon Endpoints (${addonUrls.size}):\n")
+            results.forEach { append("$it\n") }
+            if (anyHealthy) {
+                append("\nLastWave source is READY.")
+            } else {
+                append("\nLastWave source is NOT ready: no addon endpoints responded.")
+            }
+        }
+
+        return SourceCheckResult(
+            healthy = anyHealthy,
+            summary = summary,
+        )
     }
 
     private suspend fun checkQqMusic(context: Context): SourceCheckResult {

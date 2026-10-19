@@ -39,6 +39,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -219,6 +220,7 @@ internal fun PlaybackSourceSections(
 
     val (lastWaveEnabled, onLastWaveEnabledChange) = rememberPreference(LastWaveEnabledKey, true)
     val (lastWaveQuality, onLastWaveQualityChange) = rememberPreference(LastWaveStreamingQualityKey, LosslessMusicApi.QUALITY_MAX_HI_RES)
+    val (lastWaveAddonUrl, onLastWaveAddonUrlChange) = rememberPreference(LastWaveStreamingAddonUrlKey, "")
     val (showSourceInBadge, onShowSourceInBadgeChange) = rememberPreference(ShowSourceInQualityBadgeKey, true)
 
     val (tidalAccountFirst, onTidalAccountFirstChange) = rememberPreference(TidalAccountFirstKey, true)
@@ -758,6 +760,51 @@ internal fun PlaybackSourceSections(
         }
     }
 
+    var showAddonUrlDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showAddonUrlDialog) {
+        var tempUrl by rememberSaveable { mutableStateOf(lastWaveAddonUrl) }
+        DefaultDialog(
+            onDismiss = { showAddonUrlDialog = false },
+            content = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Streaming Addon Endpoint URL(s)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "Enter one or multiple addon endpoint URLs (comma or newline separated, e.g. https://lastwaveaddons.clashprojects.qd.je/a/YOUR_SECRET_KEY)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = tempUrl,
+                        onValueChange = { tempUrl = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("https://lastwaveaddons.clashprojects.qd.je/a/YOUR_KEY") },
+                        singleLine = false,
+                        maxLines = 4,
+                    )
+                }
+            },
+            buttons = {
+                TextButton(onClick = { showAddonUrlDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+                Spacer(Modifier.width(8.dp))
+                TextButton(
+                    onClick = {
+                        onLastWaveAddonUrlChange(tempUrl)
+                        showAddonUrlDialog = false
+                    },
+                ) {
+                    Text(stringResource(R.string.save))
+                }
+            },
+        )
+    }
+
     PreferenceGroup(title = stringResource(R.string.source_lastwave)) {
         item {
             SwitchPreference(
@@ -771,6 +818,15 @@ internal fun PlaybackSourceSections(
         }
 
         if (lastWaveEnabled) {
+            item {
+                PreferenceEntry(
+                    title = { Text("Streaming Addon Endpoint URL(s)") },
+                    description = if (lastWaveAddonUrl.isNotBlank()) lastWaveAddonUrl else "Tap to configure LastWave addon endpoint URL(s)",
+                    icon = { Icon(painterResource(R.drawable.link), null) },
+                    onClick = { showAddonUrlDialog = true },
+                )
+            }
+
             item {
                 LastWaveQualitySelector(
                     selectedFormatId = lastWaveQuality,
