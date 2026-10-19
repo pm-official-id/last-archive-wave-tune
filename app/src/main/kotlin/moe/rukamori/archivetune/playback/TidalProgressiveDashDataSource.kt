@@ -161,18 +161,32 @@ internal class TidalProgressiveDashDataSource(
     }
 
     private fun seekToPosition(bytesToSkip: Long) {
-        if (bytesToSkip <= 0L) return
-        if (bytesToSkip < pendingBytes.size) {
-            pendingOffset = bytesToSkip.toInt()
+        var remaining = bytesToSkip
+        if (remaining <= pendingBytes.size) {
+            pendingOffset = remaining.toInt()
             return
         }
 
-        val remainingAfterHeader = bytesToSkip - pendingBytes.size
-        val approxSegmentBytes = 200_000L
-        val estimatedSegmentIndex = (1 + (remainingAfterHeader / approxSegmentBytes)).toInt().coerceIn(1, segmentUrls.size - 1)
+        remaining -= pendingBytes.size
+        pendingBytes = ByteArray(0)
+        pendingOffset = 0
 
-        nextSegmentIndex = estimatedSegmentIndex
-        loadNextSegment()
+        while (remaining > 0L && nextSegmentIndex < segmentUrls.size) {
+            val payload = fetchSegment(segmentUrls[nextSegmentIndex], nextSegmentIndex)
+            nextSegmentIndex++
+            if (remaining < payload.size) {
+                pendingBytes = payload
+                pendingOffset = remaining.toInt()
+                remaining = 0L
+                break
+            } else {
+                remaining -= payload.size
+            }
+        }
+
+        if (remaining > 0L) {
+            throw IOException("TIDAL progressive stream ended before the requested position")
+        }
     }
 
     private fun skipFully(bytesToSkip: Long) {
