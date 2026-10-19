@@ -542,26 +542,20 @@ class MusicService :
                         host.endsWith("ytimg.com")
 
                 if (!isYouTubeMediaHost) {
-                    // Qobuz backup server (mlc-ytify.kouzu.in) — used as a separate audio source
-                    // when the user explicitly enables QOBUZ_BACKUP. The endpoint takes a YouTube
-                    // video id as a path segment and returns a lossless stream. The
-                    // x-request-source: muzo header MUST be sent on every request (including the
-                    // redirected CDN fetch in some setups) — without it the server rate-limits
-                    // aggressively. ExoPlayer streams through this same OkHttp client, so
-                    // injecting the header here means the streaming requests (not just the
-                    // initial resolve) also bypass rate-limiting.
-                    if (host.endsWith("kouzu.in") && !request.header("x-request-source").isNullOrEmpty()) {
-                        return@addInterceptor chain.proceed(request)
+                    val builder = request.newBuilder()
+                    if (request.header("User-Agent").isNullOrBlank()) {
+                        builder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
                     }
-                    if (host.endsWith("kouzu.in")) {
-                        val patched =
-                            request
-                                .newBuilder()
-                                .header("x-request-source", "muzo")
-                                .build()
-                        return@addInterceptor chain.proceed(patched)
+                    if (request.header("Accept").isNullOrBlank()) {
+                        builder.header("Accept", "audio/*,*/*;q=0.8")
                     }
-                    return@addInterceptor chain.proceed(request)
+                    if (request.header("Accept-Encoding").isNullOrBlank()) {
+                        builder.header("Accept-Encoding", "identity")
+                    }
+                    if (host.endsWith("kouzu.in") && request.header("x-request-source").isNullOrEmpty()) {
+                        builder.header("x-request-source", "muzo")
+                    }
+                    return@addInterceptor chain.proceed(builder.build())
                 }
 
                 val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
