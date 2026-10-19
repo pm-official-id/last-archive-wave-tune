@@ -1,6 +1,6 @@
 [versions]
 onnxruntime = "1.28.0"
-agp = "9.1.1"
+agp = "9.4.1"
 annotation = "1.10.0"
 json = "20250517"
 kotlin = "2.4.0"

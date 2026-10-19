@@ -523,6 +523,9 @@ class MusicService :
     private val playbackUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
     private val remotePlaybackTrackingUrlCache = ConcurrentHashMap<String, String>()
     private val contentLengthCache = ConcurrentHashMap<String, Long>()
+    private val losslessMusicApi: moe.rukamori.archivetune.lossless.LosslessMusicApi by lazy {
+        moe.rukamori.archivetune.lossless.LosslessMusicApi(this, mediaOkHttpClient, dataStore)
+    }
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
@@ -8467,65 +8470,27 @@ class MusicService :
             return null
         }
 
-        val dolbyAtmosEnabled = dataStore.get(LastWaveDolbyAtmosEnabledKey, false)
-        val hiResEnabled = dataStore.get(LastWaveHiResFlacEnabledKey, false) || dataStore.get(LastWave24BitAudioEnabledKey, false)
-        val quality = if (hiResEnabled) "hi_res" else "lossless"
-
-        Timber.tag("MusicService").d("LastWave Addon resolve start | url=%s quality=%s atmos=%s", addonUrl, quality, dolbyAtmosEnabled)
-
         return runCatching {
             runBlocking(Dispatchers.IO) {
-                val client = moe.rukamori.archivetune.addon.AddonClient(addonUrl, mediaOkHttpClient)
-                val primaryArtist = query.artists.firstOrNull().orEmpty()
-                val queries = listOfNotNull(
-                    if (primaryArtist.isNotBlank()) "${query.title} $primaryArtist".trim() else null,
-                    query.title.trim(),
-                    if (query.artists.size > 1) "${query.title} ${query.artists[1]}".trim() else null,
-                ).filter { it.isNotBlank() }.distinct()
+                val stream = losslessMusicApi.resolveStream(
+                    title = query.title,
+                    artist = query.artists.firstOrNull().orEmpty(),
+                    expectedDurationSeconds = query.durationMs?.let { (it / 1000).toInt() },
+                    expectedAlbum = query.album,
+                ) ?: return@runBlocking null
 
-                var bestCandidate: moe.rukamori.archivetune.addon.AddonTrack? = null
+                var playUrl = stream.url
+                var mimeType = stream.mimeType
 
-                for (q in queries) {
-                    val searchResult = client.search(q, quality, dolbyAtmosEnabled).getOrNull()
-                    if (searchResult.isNullOrEmpty()) continue
-
-                    val validCandidates = searchResult.mapNotNull { candidate ->
-                        verifiedAddonCandidateScore(query, candidate)?.let { score ->
-                            candidate to score
-                        }
-                    }.sortedByDescending { it.second }
-
-                    val topMatch = validCandidates.firstOrNull()?.first
-                    if (topMatch != null) {
-                        bestCandidate = topMatch
-                        break
-                    }
-                }
-
-                val candidate = bestCandidate ?: run {
-                    Timber.tag("MusicService").w("LastWave Addon: no candidates passed verification for '%s'", query.title)
-                    return@runBlocking null
-                }
-
-                val streamResult = client.stream(candidate.id, quality, dolbyAtmosEnabled).getOrNull() ?: return@runBlocking null
-
-                val streamUri = streamResult.dataUrl.takeIf { !it.isNullOrBlank() }
-                    ?: streamResult.directStreamUrl.takeIf { !it.isNullOrBlank() }
-                    ?: streamResult.url.takeIf { it.isNotBlank() }
-                    ?: return@runBlocking null
-
-                var playUrl = streamUri
-                var mimeType = "audio/flac"
-
-                if (streamUri.startsWith("data:application/dash+xml;base64,", ignoreCase = true) || streamResult.format.contains("dash", ignoreCase = true) || streamUri.contains(".mpd")) {
-                    val xml = if (streamUri.startsWith("data:application/dash+xml;base64,", ignoreCase = true)) {
+                if (playUrl.startsWith("data:application/dash+xml;base64,", ignoreCase = true) || playUrl.contains(".mpd")) {
+                    val xml = if (playUrl.startsWith("data:application/dash+xml;base64,", ignoreCase = true)) {
                         String(
-                            android.util.Base64.decode(streamUri.substringAfter("base64,"), android.util.Base64.DEFAULT),
+                            android.util.Base64.decode(playUrl.substringAfter("base64,"), android.util.Base64.DEFAULT),
                             Charsets.UTF_8,
                         )
                     } else {
                         runCatching {
-                            val req = Request.Builder().url(streamUri).header("User-Agent", "LastWave-Player/1.0").get().build()
+                            val req = Request.Builder().url(playUrl).header("User-Agent", "LastWave-Player/1.0").get().build()
                             mediaOkHttpClient.newCall(req).execute().use { it.body?.string().orEmpty() }
                         }.getOrDefault("")
                     }
@@ -8536,42 +8501,38 @@ class MusicService :
                             .joinToString("") { "%02x".format(it) }
                             .take(16)
                         val dir = java.io.File(cacheDir, "tidal_mpd").apply { mkdirs() }
-                        val file = java.io.File(dir, "lastwave_${candidate.id}_$digest.mpd")
+                        val file = java.io.File(dir, "lastwave_${stream.trackId}_$digest.mpd")
                         if (!file.exists()) {
                             runCatching { file.writeText(xml, Charsets.UTF_8) }
                         }
-                        playUrl = android.net.Uri.fromFile(file).toString()
-                        mimeType = "application/dash+xml"
+                        playUrl = TidalAudioProvider.progressiveDashUri(file)
+                        mimeType = "audio/flac"
                     }
-                } else if (streamResult.format.contains("flac", ignoreCase = true) || streamUri.contains(".flac")) {
-                    mimeType = "audio/flac"
-                } else if (streamResult.format.contains("mp4", ignoreCase = true) || streamResult.format.contains("m4a", ignoreCase = true) || streamUri.contains(".m4a")) {
-                    mimeType = "audio/mp4"
                 }
 
-                val is24Bit = (streamResult.bitDepth ?: candidate.bitDepth ?: 16) >= 24
-                val labelQuality = if (is24Bit) "24-bit Hi-Res FLAC" else if (streamResult.isDolbyAtmos || candidate.isDolbyAtmos) "Dolby Atmos" else "Lossless FLAC"
+                val is24Bit = stream.bitDepth >= 24
+                val labelQuality = if (is24Bit) "24-bit Hi-Res FLAC" else if (stream.formatId == moe.rukamori.archivetune.lossless.LosslessMusicApi.QUALITY_DOLBY_ATMOS) "Dolby Atmos" else "Lossless FLAC"
 
                 Timber.tag("MusicService").i("LastWave Addon resolved '%s' -> %s (%s)", query.title, playUrl.take(60), labelQuality)
                 moe.rukamori.archivetune.utils.SourceDebugLogger.log(
                     "LastWave-Resolver",
-                    "SUCCESS: '${query.title}' -> Track='${candidate.title}' (${candidate.artist}) playUrl=${playUrl.take(100)} mimeType=$mimeType label=$labelQuality",
+                    "SUCCESS: '${query.title}' -> TrackId='${stream.trackId}' playUrl=${playUrl.take(100)} mimeType=$mimeType label=$labelQuality",
                 )
 
                 DirectStream(
                     uri = playUrl,
                     mimeType = mimeType,
-                    codecs = streamResult.codec.ifBlank { "flac" },
+                    codecs = "flac",
                     contentLength = null,
                     label = "LastWave $labelQuality",
                     source = AudioSourceType.LASTWAVE,
                     trustedDirectId = true,
-                    sampleRate = streamResult.sampleRate?.toInt() ?: candidate.sampleRate?.toInt() ?: 44100,
-                    bitDepth = streamResult.bitDepth ?: candidate.bitDepth ?: 16,
-                    matchedTitle = candidate.title.ifBlank { query.title },
-                    matchedArtist = candidate.artist.ifBlank { query.artists.firstOrNull() },
-                    matchedAlbum = candidate.album.ifBlank { query.album },
-                    matchedDurationMs = (candidate.duration * 1000).toLong().takeIf { it > 0 } ?: query.durationMs,
+                    sampleRate = (stream.samplingRate * 1000).toInt(),
+                    bitDepth = stream.bitDepth,
+                    matchedTitle = query.title,
+                    matchedArtist = query.artists.firstOrNull(),
+                    matchedAlbum = query.album,
+                    matchedDurationMs = stream.durationSeconds.toLong() * 1000L,
                 )
             }
         }.onFailure { error ->
