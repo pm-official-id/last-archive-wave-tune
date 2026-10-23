@@ -26,6 +26,7 @@ import moe.rukamori.archivetune.constants.LastWaveStreamingAddonUrlKey
 import moe.rukamori.archivetune.qqmusic.QqMusicApi
 import moe.rukamori.archivetune.qqmusic.QqMusicSession
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.DEFAULT_LASTWAVE_ADDON_URL
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.jiosaavn.SaavnService
@@ -88,7 +89,10 @@ object SourceCheckService {
         }
 
     private suspend fun checkLastWave(context: Context): SourceCheckResult {
-        val addonUrlRaw = context.dataStore.data.first()[LastWaveStreamingAddonUrlKey].orEmpty()
+        val storedAddonUrl = context.dataStore.data.first()[LastWaveStreamingAddonUrlKey].orEmpty()
+        // Same fallback resolveStream uses: a blank preference streams through the built-in
+        // default endpoint, so the check must probe that too or fresh installs look broken.
+        val addonUrlRaw = storedAddonUrl.ifBlank { DEFAULT_LASTWAVE_ADDON_URL }
         val addonUrls = addonUrlRaw.split(Regex("""[\s,\n]+"""))
             .map { it.trim().removeSuffix("/") }
             .filter { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) }

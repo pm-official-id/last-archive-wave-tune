@@ -479,6 +479,34 @@ class LosslessMusicApi(
                 score += 200
             }
 
+            // Album agreement (ported from LastWave-Native): a candidate from the expected album
+            // outranks a same-title track from a different release, and a clearly unrelated album
+            // is penalized — the strongest signal against "right song, wrong release" matches.
+            expectedAlbum?.takeIf(String::isNotBlank)?.let { album ->
+                val normExpected = normalizeTitle(album, "")
+                val normCandidate = normalizeTitle(item.albumTitle, "")
+                if (normExpected.isNotBlank() && normCandidate.isNotBlank()) {
+                    when {
+                        normExpected == normCandidate -> score += 500
+                        normCandidate.contains(normExpected) || normExpected.contains(normCandidate) -> score += 300
+                        else -> {
+                            val expTokens = normExpected.split(' ').filter { it.length > 1 }.toSet()
+                            val candTokens = normCandidate.split(' ').filter { it.length > 1 }.toSet()
+                            val expNumbers = Regex("""\b\d+\b""").findAll(normExpected).map { it.value }.toSet()
+                            val candNumbers = Regex("""\b\d+\b""").findAll(normCandidate).map { it.value }.toSet()
+                            val numbersClash = expNumbers.isNotEmpty() && candNumbers.isNotEmpty() && expNumbers != candNumbers
+                            val overlap = expTokens.intersect(candTokens).size
+                            if (!numbersClash && expTokens.isNotEmpty() && overlap >= minOf(2, expTokens.size) && overlap * 2 >= expTokens.size) {
+                                score += 150
+                            } else {
+                                score -= 100
+                                Log.d(TAG, "album mismatch penalty id=${item.id}: expected='$album' candidate='${item.albumTitle}' for '$title'")
+                            }
+                        }
+                    }
+                }
+            }
+
             durationDifference?.let { score += (maxDurationDifference - it) * 5 }
             return score
         }
@@ -535,6 +563,24 @@ class LosslessMusicApi(
                 .replace(TRAILING_DISPLAY_NOISE, " ")
                 .replace(Regex("""\s+"""), " ")
                 .trim()
+        }
+
+        /** Normalizes an album name for candidate-vs-expected comparison: search-noise stripped,
+         * artist prefix/suffix removed, then tokenized. */
+        private fun normalizeTitle(raw: String, artist: String): String {
+            var cleaned = cleanForSearch(raw)
+            if (artist.isNotBlank()) {
+                val cleanArt = cleanForSearch(artist).ifBlank { artist }
+                cleaned = cleaned.replaceFirst(
+                    Regex("""^\s*${Regex.escape(cleanArt)}\s*[-–—:]\s*""", RegexOption.IGNORE_CASE),
+                    "",
+                )
+                cleaned = cleaned.replace(
+                    Regex("""(?i)\s*[-–—:]\s*${Regex.escape(cleanArt)}\s*$"""),
+                    "",
+                )
+            }
+            return normalizeText(cleaned)
         }
 
         private fun levenshtein(a: String, b: String): Int {
@@ -838,6 +884,11 @@ class LosslessMusicApi(
                     ?: continue
 
                 if (isDecoyStream(rawUrl)) continue
+
+                // Atmos isolation: a stereo tier must never consume a spatial rendition —
+                // the URL codec check below misses manifests whose spatial-ness only shows
+                // in the audioMode flag.
+                if (!wantAtmos && isAtmosStreamUrl(rawUrl)) continue
 
                 val isStreamAtmos = stream?.isDolbyAtmos == true || isAtmosCodec(stream?.codec) || isAtmosStreamUrl(rawUrl)
                 val manifestSampleRate = manifestSampleRateOf(rawUrl)

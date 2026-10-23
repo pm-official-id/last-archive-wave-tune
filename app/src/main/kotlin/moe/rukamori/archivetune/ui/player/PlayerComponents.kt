@@ -1857,16 +1857,10 @@ fun PlayerControlsContent(
         centerContent =
             if (playerDesignStyle == PlayerDesignStyle.V7 && currentFormat != null) {
                 {
-                    val codec = currentFormat.mimeType.substringAfter("/").uppercase()
-                    val label =
-                        when {
-                            codec.contains("FLAC") || codec.contains("ALAC") -> "Lossless"
-                            codec.contains("OPUS") -> codec
-                            codec.contains("AAC") -> codec
-                            codec.contains("MP4A") -> "AAC"
-                            codec.contains("VORBIS") -> "Vorbis"
-                            else -> codec
-                        }
+                    // Source tag (what is actually feeding playback) + codec/quality code, e.g.
+                    // "LASTWAVE · LOSSLESS", "LASTWAVE · DOLBY ATMOS", "YOUTUBE · OPUS".
+                    val format = currentFormat ?: return@PlayerTimeLabel
+                    val label = qualityBadgeText(format.codecLabel())
                     Surface(
                         shape = RoundedCornerShape(4.dp),
                         color = textBackgroundColor.copy(alpha = 0.12f),
@@ -2720,10 +2714,7 @@ private fun V8QualityChip(
     foreground: Color,
     modifier: Modifier = Modifier,
 ) {
-    val label =
-        remember(currentFormat.mimeType, currentFormat.codecs) {
-            currentFormat.codecLabel()
-        }
+    val label = qualityBadgeText(currentFormat.codecLabel())
 
     Surface(
         shape = RoundedCornerShape(6.dp),

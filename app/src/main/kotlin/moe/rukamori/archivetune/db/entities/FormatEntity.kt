@@ -74,6 +74,8 @@ fun FormatEntity.codecLabel(): String {
     val rawMime = mimeType.substringAfter("/").substringBefore(";").uppercase()
 
     return when {
+        rawCodec.contains("EC-3") || rawCodec.contains("EAC3") ||
+            rawMime.contains("EC-3") || rawMime.contains("EAC3") -> "DOLBY ATMOS"
         rawCodec.contains("FLAC") || rawCodec.contains("ALAC") -> "Lossless"
         rawCodec.contains("OPUS") -> "OPUS"
         rawCodec.contains("AAC") || rawCodec.contains("MP4A") -> "AAC"

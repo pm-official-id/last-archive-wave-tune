@@ -83,6 +83,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.ui.player.qualityBadgeText
 import moe.rukamori.archivetune.ui.player.rememberOfflineArtworkImageRequest
 import moe.rukamori.archivetune.ui.utils.rememberPreBlurredBitmap
 
@@ -433,10 +434,7 @@ internal fun WavySliderWithLabels(
             )
 
             if (currentFormat != null) {
-                val label =
-                    remember(currentFormat.mimeType, currentFormat.codecs) {
-                        currentFormat.codecLabel()
-                    }
+                val label = qualityBadgeText(currentFormat.codecLabel())
                 Row(
                     modifier =
                         Modifier

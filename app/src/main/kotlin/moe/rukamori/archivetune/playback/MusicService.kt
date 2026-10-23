@@ -7424,6 +7424,31 @@ class MusicService :
      */
     private val _resolvedSourcesRevision = MutableStateFlow(0L)
 
+    /**
+     * The source actually feeding playback per media id — not the per-song pin, the outcome of the
+     * last resolution (a lossless source that won, or the YouTube fallback). The player's quality
+     * badge reads this so it can label what is really playing. Bumped through
+     * [activeSourceRevision] whenever an entry changes.
+     */
+    private val activeSourceByMediaId = ConcurrentHashMap<String, AudioSourceType>()
+
+    /** Recomposition signal for the player badge's source label. */
+    private val _activeSourceRevision = MutableStateFlow(0L)
+    val activeSourceRevision: StateFlow<Long> = _activeSourceRevision
+
+    private fun recordActiveSource(
+        mediaId: String,
+        source: AudioSourceType,
+    ) {
+        if (activeSourceByMediaId[mediaId] != source) {
+            activeSourceByMediaId[mediaId] = source
+            _activeSourceRevision.value = _activeSourceRevision.value + 1L
+        }
+    }
+
+    /** Source currently feeding playback for [mediaId], or null when not yet resolved. */
+    fun activeSourceForSong(mediaId: String): AudioSourceType? = activeSourceByMediaId[mediaId]
+
     private fun recordResolvedSource(
         mediaId: String,
         source: AudioSourceType,
@@ -7617,6 +7642,16 @@ class MusicService :
                 // Source-prefixed content-length entries are also stale after a source switch.
                 contentLengthCache.remove(key)
             }
+            // Rendition-scoped LastWave keys ("lastwave:<codec>:<depth>:<rate>:<id>") carry
+            // extra segments after the prefix, so the bare enumeration above cannot see them.
+            runCatching {
+                playerCache.keys
+                    .filter { it.startsWith("lastwave:") && it != "lastwave:$mediaId" && it.endsWith(":$mediaId") }
+                    .forEach { key ->
+                        playerCache.removeResource(key)
+                        contentLengthCache.remove(key)
+                    }
+            }
             // Cancel any in-flight crossfade so its volume ramp / secondary player can't pin the
             // primary player's volume low while the new source is preparing.
             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
@@ -7787,7 +7822,8 @@ class MusicService :
                 tidalActiveMediaIds.add(mediaId)
                 audioNormalizationFactorCache[mediaId] = 1f
                 recordResolvedSource(mediaId, cached.stream.source)
-                val cacheKey = sourceCacheKey(cached.stream.source, mediaId)
+                recordActiveSource(mediaId, cached.stream.source)
+                val cacheKey = sourceCacheKey(cached.stream, mediaId)
                 cached.stream.contentLength?.takeIf { it > 0L }?.let { contentLengthCache[cacheKey] = it }
                 return dataSpec
                     .buildUpon()
@@ -7856,6 +7892,7 @@ class MusicService :
         if (lowDataModeActive && !isDirectPick) {
             tidalActiveMediaIds.remove(mediaId)
             Timber.tag("MusicService").i("Low-data mode active; skipping Tidal/Qobuz for %s", mediaId)
+            recordActiveSource(mediaId, AudioSourceType.YOUTUBE)
             return null
         }
 
@@ -7988,6 +8025,7 @@ class MusicService :
         // fall back to YouTube (no user-facing notice — the track just plays from YouTube). Kept as a
         // debug log only.
         Timber.tag("MusicService").w("No lossless source cleared the metadata match gate for \"%s\"; falling back to YouTube", query.title)
+        recordActiveSource(mediaId, AudioSourceType.YOUTUBE)
         tidalActiveMediaIds.remove(mediaId)
         return null
     }
@@ -8408,6 +8446,7 @@ class MusicService :
 
                 var playUrl = stream.url
                 var mimeType = stream.mimeType
+                var streamCodecs = stream.audioCodecOverride ?: "flac"
 
                 if (playUrl.startsWith("data:application/dash+xml;base64,", ignoreCase = true) || playUrl.contains(".mpd")) {
                     val xml = if (playUrl.startsWith("data:application/dash+xml;base64,", ignoreCase = true)) {
@@ -8433,7 +8472,28 @@ class MusicService :
                             runCatching { file.writeText(xml, Charsets.UTF_8) }
                         }
                         playUrl = TidalAudioProvider.progressiveDashUri(file)
-                        mimeType = "audio/flac"
+
+                        // The data source remuxes only FLAC renditions; Atmos (E-AC-3 JOC) and
+                        // AAC renditions pass through as fragmented MP4, so the declared mime and
+                        // codec must describe the real bytes or the player picks the wrong decoder.
+                        val manifestCodec = Regex("""codecs="([^"]+)"""")
+                            .find(xml)?.groupValues?.getOrNull(1)?.trim()?.lowercase()
+                        when {
+                            manifestCodec == null -> mimeType = "audio/flac"
+                            manifestCodec.startsWith("flac") -> {
+                                mimeType = "audio/flac"
+                                streamCodecs = manifestCodec
+                            }
+                            manifestCodec.startsWith("ec-3") || manifestCodec.startsWith("eac3") -> {
+                                mimeType = "audio/eac3"
+                                streamCodecs = manifestCodec
+                            }
+                            manifestCodec.startsWith("mp4a") || manifestCodec.startsWith("aac") -> {
+                                mimeType = "audio/mp4"
+                                streamCodecs = manifestCodec
+                            }
+                            else -> streamCodecs = manifestCodec
+                        }
                     }
                 }
 
@@ -8445,7 +8505,7 @@ class MusicService :
                 DirectStream(
                     uri = playUrl,
                     mimeType = mimeType,
-                    codecs = "flac",
+                    codecs = streamCodecs,
                     contentLength = null,
                     label = "LastWave $labelQuality",
                     source = AudioSourceType.LASTWAVE,
@@ -8880,7 +8940,8 @@ class MusicService :
         stream: DirectStream,
     ): DataSpec {
         Timber.tag("MusicService").i("Using %s stream for %s: %s", stream.source, mediaId, stream.label)
-        val cacheKey = sourceCacheKey(stream.source, mediaId)
+        recordActiveSource(mediaId, stream.source)
+        val cacheKey = sourceCacheKey(stream, mediaId)
         stream.contentLength?.takeIf { it > 0L }?.let { contentLengthCache[cacheKey] = it }
         tidalActiveMediaIds.add(mediaId)
         audioNormalizationFactorCache[mediaId] = 1f
@@ -9015,7 +9076,7 @@ class MusicService :
                             // Also surface the size in the in-memory cache so the
                             // download resolver picks it up immediately for the
                             // cache-first prewarm partial-cache check.
-                            contentLengthCache[sourceCacheKey(stream.source, mediaId)] = len
+                            contentLengthCache[sourceCacheKey(stream, mediaId)] = len
                         }
                     }
                 }.onFailure { err ->
@@ -9050,6 +9111,24 @@ class MusicService :
             AudioSourceType.QOBUZ -> "qobuz:$mediaId"
             else -> "${source.name.lowercase()}:$mediaId"
         }
+
+    /**
+     * Cache key for a resolved [DirectStream]. LastWave renditions of the same song are
+     * genuinely different bytes (FLAC vs Atmos E-AC-3 vs AAC, 16 vs 24-bit), and the bytes are
+     * the data source's *transformed* output — so a rendition change or a transformation fix
+     * must never replay spans written under the old key. Scoping the key by codec/depth/rate
+     * keeps a quality switch taking effect immediately and quarantines spans written by an
+     * older build's remuxer (they become unreachable and age out via LRU eviction).
+     */
+    private fun sourceCacheKey(
+        stream: DirectStream,
+        mediaId: String,
+    ): String {
+        val base = sourceCacheKey(stream.source, mediaId)
+        if (stream.source != AudioSourceType.LASTWAVE) return base
+        val codecSlug = stream.codecs.substringBefore('.').filter { it.isLetterOrDigit() }.ifBlank { "flac" }
+        return "$base:$codecSlug:${stream.bitDepth ?: 0}:${stream.sampleRate ?: 0}"
+    }
 
     /**
      * Cheap check (no network) for whether an external lossless source (Tidal) should be preferred

@@ -18,7 +18,12 @@ import okhttp3.Request
 import java.io.File
 import java.io.IOException
 
-/** Presents TIDAL's fragmented FLAC DASH stream as a progressive FLAC stream. */
+/** Presents TIDAL's fragmented FLAC DASH stream as a progressive FLAC stream. *
+ * Non-FLAC renditions (Dolby Atmos E-AC-3 JOC, AAC) cannot survive the FLAC remux —
+ * the synthesized `fLaC` header plus raw E-AC-3/AAC frames is unparseable. For those
+ * the stream is passed through as plain fragmented MP4 (init + media segments
+ * concatenated) so ExoPlayer's FragmentedMp4Extractor reads the real track format
+ * and picks the correct decoder. */
 internal class TidalProgressiveDashDataSource(
     private val httpClient: OkHttpClient,
 ) : BaseDataSource(true) {
@@ -29,6 +34,7 @@ internal class TidalProgressiveDashDataSource(
     private var pendingOffset = 0
     private var bytesRemaining = C.LENGTH_UNSET.toLong()
     private var opened = false
+    private var flacRemux = true
 
     override fun open(dataSpec: DataSpec): Long {
         val manifestPath =
@@ -38,11 +44,10 @@ internal class TidalProgressiveDashDataSource(
         val manifestFile = File(manifestPath)
         if (!manifestFile.isFile) throw IOException("TIDAL progressive manifest is unavailable")
 
+        val manifestText = manifestFile.readText(Charsets.UTF_8)
         val urls =
             runCatching {
-                TidalAudioProvider.progressiveDashSegmentUrls(
-                    manifestFile.readText(Charsets.UTF_8),
-                )
+                TidalAudioProvider.progressiveDashSegmentUrls(manifestText)
             }.getOrElse { error ->
                 throw IOException("TIDAL progressive manifest could not be parsed", error)
             }
@@ -50,16 +55,25 @@ internal class TidalProgressiveDashDataSource(
             throw IOException("TIDAL progressive manifest did not contain absolute FLAC segments")
         }
 
+        // The segment URLs always come from the manifest's FIRST representation, so the
+        // remux decision must follow that same representation's codec.
+        val firstCodec = MANIFEST_CODEC.find(manifestText)?.groupValues?.getOrNull(1)?.trim()?.lowercase().orEmpty()
+        flacRemux = firstCodec.isBlank() || firstCodec.startsWith("flac")
+
         currentUri = dataSpec.uri
         segmentUrls = urls
         nextSegmentIndex = 1
         pendingBytes =
-            byteArrayOf(
-                'f'.code.toByte(),
-                'L'.code.toByte(),
-                'a'.code.toByte(),
-                'C'.code.toByte(),
-            ) + fetchSegment(urls.first(), 0)
+            if (flacRemux) {
+                byteArrayOf(
+                    'f'.code.toByte(),
+                    'L'.code.toByte(),
+                    'a'.code.toByte(),
+                    'C'.code.toByte(),
+                ) + fetchSegment(urls.first(), 0)
+            } else {
+                fetchSegment(urls.first(), 0)
+            }
         pendingOffset = 0
         val estimatedTotalBytes = pendingBytes.size.toLong() + (urls.size - 1).toLong() * 200_000L
         bytesRemaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) {
@@ -139,7 +153,11 @@ internal class TidalProgressiveDashDataSource(
                     throw IOException("TIDAL FLAC segment ${segmentIndex + 1} HTTP ${response.code}")
                 }
                 val bytes = response.body?.bytes() ?: throw IOException("TIDAL FLAC segment was empty")
-                if (segmentIndex == 0) {
+                if (!flacRemux) {
+                    // Passthrough: the concatenated init + fMP4 media segments form a valid
+                    // fragmented-MP4 stream on their own; unwrapping would destroy the track.
+                    bytes
+                } else if (segmentIndex == 0) {
                     TidalAudioProvider.progressiveDashFlacMetadata(bytes)
                 } else {
                     TidalAudioProvider.progressiveDashAudioPayload(bytes)
@@ -202,5 +220,9 @@ internal class TidalProgressiveDashDataSource(
         private val httpClient: OkHttpClient,
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource = TidalProgressiveDashDataSource(httpClient)
+    }
+
+    companion object {
+        private val MANIFEST_CODEC = Regex("""codecs="([^"]+)"""")
     }
 }

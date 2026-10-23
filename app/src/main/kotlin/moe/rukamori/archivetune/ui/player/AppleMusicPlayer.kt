@@ -2365,9 +2365,7 @@ private fun AppleMusicQualityChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val label = remember(currentFormat.mimeType, currentFormat.codecs) {
-        currentFormat.codecLabel()
-    }
+    val label = qualityBadgeText(currentFormat.codecLabel())
     val lossless = remember(currentFormat.codecs, currentFormat.mimeType) {
         currentFormat.isLossless()
     }
