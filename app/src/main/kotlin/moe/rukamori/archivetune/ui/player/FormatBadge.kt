@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.FormatEntity
+import moe.rukamori.archivetune.db.entities.codecLabel
 import java.util.Locale
 
 // ── The codec / quality badge (adapted to ArchiveTune's FormatEntity) ─────────
@@ -71,9 +72,10 @@ fun LosslessOrStats(
     format: FormatEntity?,
     modifier: Modifier = Modifier,
 ) {
-    val lossless = format?.isLossless() == true
+    val lossless = format?.let { it.mimeType.endsWith("flac") || it.mimeType.endsWith("alac") } == true
     val hiRes = lossless && (format?.sampleRate ?: 0) >= 88_200
-    val hiQuality = !lossless && (format?.bitrate ?: 0) >= 250_000
+    val atmos = format?.codecs?.uppercase().orEmpty().let { it.contains("EC-3") || it.contains("EAC3") } ||
+        format?.mimeType?.uppercase().orEmpty().let { it.contains("EAC3") || it.contains("EC-3") }
     when {
         // Still resolving — nothing measured yet to confirm with, so this is a
         // statement of intent, not a result.
@@ -82,22 +84,24 @@ fun LosslessOrStats(
             animated = false,
             modifier = modifier,
         )
-        lossless -> LosslessLabel(
-            // Same line Tidal, Qobuz and Apple Music draw it at.
-            text = if (hiRes) "Hi-Res Lossless" else "Lossless",
+        else -> LosslessLabel(
+            // The codec/quality code prefixed with the source actually feeding playback
+            // ("LASTWAVE · Hi-Res Lossless", "YOUTUBE · OPUS", ...).
+            text = qualityBadgeText(
+                when {
+                    atmos -> "Dolby Atmos"
+                    // Same line Tidal, Qobuz and Apple Music draw it at.
+                    hiRes -> "Hi-Res Lossless"
+                    lossless -> "Lossless"
+                    else -> format.codecLabel()
+                },
+            ),
             // Shimmer is reserved for the thing that was asked for and
             // confirmed. It is what makes the badge read as an achievement
             // rather than a label, which only one of these two is.
-            animated = true,
+            animated = lossless || atmos,
             modifier = modifier,
         )
-        // Lossy, but the good end of lossy.
-        hiQuality -> LosslessLabel(
-            text = "Hi-Quality",
-            animated = false,
-            modifier = modifier,
-        )
-        else -> {}
     }
 }
 

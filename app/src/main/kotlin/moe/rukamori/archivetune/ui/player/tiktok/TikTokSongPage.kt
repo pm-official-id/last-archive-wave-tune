@@ -62,6 +62,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.db.entities.codecLabel
+import moe.rukamori.archivetune.ui.player.qualityBadgeText
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -657,6 +661,26 @@ private fun TikTokSongInfo(
                 modifier = Modifier.padding(end = TIKTOK_CAPTION_TEXT_CLEARANCE),
             )
         }
+        // Source + codec badge — the same line every other player style carries under its
+        // seek bar, slotted under the caption because this style has no seek bar.
+        TikTokQualityBadge()
+    }
+}
+
+@Composable
+private fun TikTokQualityBadge() {
+    val playerConnection = LocalPlayerConnection.current ?: return
+    val currentFormat by playerConnection.currentFormat.collectAsStateWithLifecycle(initialValue = null)
+    currentFormat?.let { format ->
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = qualityBadgeText(format.codecLabel()),
+            color = TIKTOK_INACTIVE_GRAY,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(end = TIKTOK_CAPTION_TEXT_CLEARANCE),
+        )
     }
 }
 

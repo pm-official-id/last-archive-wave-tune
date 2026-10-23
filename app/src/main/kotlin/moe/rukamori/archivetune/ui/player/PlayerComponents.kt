@@ -1855,10 +1855,11 @@ fun PlayerControlsContent(
         textBackgroundColor = textBackgroundColor,
         showRemainingTime = playerDesignStyle == PlayerDesignStyle.V7,
         centerContent =
-            if (playerDesignStyle == PlayerDesignStyle.V7 && currentFormat != null) {
+            if (currentFormat != null) {
                 {
                     // Source tag (what is actually feeding playback) + codec/quality code, e.g.
-                    // "LASTWAVE · LOSSLESS", "LASTWAVE · DOLBY ATMOS", "YOUTUBE · OPUS".
+                    // "LASTWAVE · LOSSLESS", "LASTWAVE · DOLBY ATMOS", "YOUTUBE · OPUS". Every
+                    // numbered style funnels through this time label, so none is left badgeless.
                     val format = currentFormat ?: return@PlayerTimeLabel
                     val label = qualityBadgeText(format.codecLabel())
                     Surface(

@@ -458,6 +458,69 @@ class MainActivity : ComponentActivity() {
         connection.playQueue(pending)
     }
 
+    /**
+     * Queues and plays an arbitrary YouTube video as audio — the same path the watch?v= deep
+     * link takes. This is what turns the app into a podcast / audiobook listener: paste a video
+     * link in search (or open it with the app) and the audio-only stream plays through the
+     * normal pipeline, SponsorBlock included.
+     */
+    private fun playVideoAsAudio(videoId: String) {
+        lifecycleScope.launch {
+            val result =
+                withContext(Dispatchers.IO) {
+                    YouTube.queue(listOf(videoId), null)
+                }
+            result
+                .onSuccess { queued ->
+                    val mediaItem =
+                        queued.firstOrNull { it.id == videoId }?.toMediaItem()
+                            ?: queued.firstOrNull()?.toMediaItem()
+                            ?: MediaItem
+                                .Builder()
+                                .setMediaId(videoId)
+                                .setUri(videoId)
+                                .setCustomCacheKey(videoId)
+                                .build()
+                    pendingDeepLinkQueue = ListQueue(items = listOf(mediaItem), title = mediaItem.mediaMetadata.title?.toString())
+                    startMusicServiceSafely()
+                    playPendingDeepLinkQueueIfReady()
+                }.onFailure {
+                    reportException(it)
+                }
+        }
+    }
+
+    /**
+     * Extracts a YouTube video id from a search query when the query is one of: a youtube.com /
+     * youtu.be URL (watch / shorts / embed / live), or a bare 11-character id that could not be
+     * a plain word (YouTube ids mix digits, case and symbols; an all-lowercase dictionary word
+     * never qualifies). Null for everything that should be treated as a normal text search.
+     */
+    private fun extractYouTubeVideoId(rawQuery: String): String? {
+        val query = rawQuery.trim()
+        if (query.isEmpty()) return null
+        val asUri = query.toUri()
+        val host = asUri.host?.lowercase().orEmpty()
+        if (host.isNotEmpty()) {
+            return when {
+                host == "youtu.be" -> asUri.pathSegments.firstOrNull()?.takeIf { it.length == 11 }
+                host.endsWith("youtube.com") ->
+                    when (asUri.pathSegments.firstOrNull()) {
+                        "watch" -> asUri.getQueryParameter("v")?.takeIf { it.length == 11 }
+                        "shorts", "embed", "live", "v" -> asUri.pathSegments.getOrNull(1)?.takeIf { it.length == 11 }
+                        else -> null
+                    }
+                else -> null
+            }
+        }
+        if (Regex("^[A-Za-z0-9_-]{11}$").matches(query) &&
+            query.any { it.isDigit() || it.isUpperCase() || it == '-' || it == '_' }
+        ) {
+            return query
+        }
+        return null
+    }
+
     private fun playPendingVoiceSearchIfReady() {
         val query = pendingVoiceSearchQuery ?: return
         val connection = playerConnection ?: return
@@ -1366,10 +1429,17 @@ class MainActivity : ComponentActivity() {
                     val onSearch: (String) -> Unit = {
                         if (it.isNotEmpty()) {
                             onActiveChange(false)
-                            navController.navigate(onlineSearchResultRoute(it, searchProvider))
-                            if (!pauseSearchHistory) {
-                                database.query {
-                                    insert(SearchHistory(query = it))
+                            // A pasted YouTube link is not a search: play the video's audio
+                            // directly instead of navigating to a results page.
+                            val linkVideoId = extractYouTubeVideoId(it)
+                            if (linkVideoId != null) {
+                                playVideoAsAudio(linkVideoId)
+                            } else {
+                                navController.navigate(onlineSearchResultRoute(it, searchProvider))
+                                if (!pauseSearchHistory) {
+                                    database.query {
+                                        insert(SearchHistory(query = it))
+                                    }
                                 }
                             }
                         }

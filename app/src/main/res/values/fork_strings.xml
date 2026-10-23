@@ -171,4 +171,7 @@
     <string name="lastwave_enable_description">Use LastWave streaming addons for Hi-Res Lossless FLAC &amp; Dolby Atmos</string>
     <string name="show_source_in_quality_badge">Show Source in Quality Badge</string>
     <string name="show_source_in_quality_badge_desc">Appends active source name (LastWave, YouTube, Tidal, Deezer, etc.) to player quality badge</string>
+
+    <!-- YouTube link playback as audio (MainActivity) -->
+    <string name="playing_video_as_audio">Playing video as audio…</string>
 </resources>
