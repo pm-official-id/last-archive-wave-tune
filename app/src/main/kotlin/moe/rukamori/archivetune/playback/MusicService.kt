@@ -9127,7 +9127,9 @@ class MusicService :
         val base = sourceCacheKey(stream.source, mediaId)
         if (stream.source != AudioSourceType.LASTWAVE) return base
         val codecSlug = stream.codecs.substringBefore('.').filter { it.isLetterOrDigit() }.ifBlank { "flac" }
-        return "$base:$codecSlug:${stream.bitDepth ?: 0}:${stream.sampleRate ?: 0}"
+        // "st" marks the FLAC seektable stream layout: the synthesized header grew by the
+        // seek table, so bytes cached under the older layout must not be replayed.
+        return "$base:st:$codecSlug:${stream.bitDepth ?: 0}:${stream.sampleRate ?: 0}"
     }
 
     /**

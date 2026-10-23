@@ -15,6 +15,7 @@ import kotlinx.coroutines.CancellationException
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import timber.log.Timber
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ExecutorService
@@ -93,45 +94,37 @@ internal class TidalProgressiveDashDataSource(
         currentUri = dataSpec.uri
         segmentUrls = urls
         nextSegmentIndex = 1
+
+        // Build the exact segment index up front (both paths). The probes are small parallel
+        // Range reads and complete in a few hundred milliseconds; without the index the FLAC
+        // path cannot publish an exact SEEKTABLE and media3 falls back to a constant-bitrate
+        // seek map that re-estimates as VBR frames parse — the restored-position seek then
+        // re-targets forever while the clock advances, and the renderer stays silent chasing
+        // it ("timer runs, no sound"). Best-effort: without the index the seek path degrades
+        // to the sequential skip, exactly as before.
+        runCatching { ensureSegmentIndex() }
+
         headerBytes =
             if (flacRemux) {
+                val metadata = fetchSegment(urls.first(), 0)
+                val withTable = appendFlacSeekTable(metadata, manifestText)
                 byteArrayOf(
                     'f'.code.toByte(),
                     'L'.code.toByte(),
                     'a'.code.toByte(),
                     'C'.code.toByte(),
-                ) + fetchSegment(urls.first(), 0)
+                ) + withTable
             } else {
                 fetchSegment(urls.first(), 0)
             }
         pendingBytes = headerBytes
         pendingOffset = 0
         streamOffsetOfPending = 0L
-        segmentIndex = null
 
         val estimatedTotalBytes = headerBytes.size.toLong() + (urls.size - 1).toLong() * 200_000L
         opened = true
         transferStarted(dataSpec)
-
-        // Warm the segment index so a later seek answers from it instead of paying the probe
-        // round-trips at seek time. Passthrough (Atmos/AAC) needs it synchronously: its seek
-        // map is scaled by the DECLARED length, so the exact total must replace the estimate
-        // before open() returns or slider drops land proportionally off-target. The FLAC remux
-        // builds its seek map from real frame sizes, so it only warms in the background.
-        // Best-effort on failure: the seek path falls back to the sequential skip.
-        if (segmentIndex == null) {
-            if (flacRemux) {
-                val warmer =
-                    Thread {
-                        runCatching { ensureSegmentIndex() }
-                    }
-                warmer.isDaemon = true
-                warmer.name = "tidal-dash-index-warm"
-                warmer.start()
-            } else {
-                runCatching { ensureSegmentIndex() }
-            }
-        }
+        Timber.tag("TidalDash").d("open pos=%d remux=%b urls=%d headerSize=%d index=%b", dataSpec.position, flacRemux, urls.size, headerBytes.size, segmentIndex != null)
 
         try {
             if (dataSpec.position > 0L) jumpToAbsolutePosition(dataSpec.position)
@@ -187,6 +180,7 @@ internal class TidalProgressiveDashDataSource(
         val index = nextSegmentIndex
         if (streamOffsetOfPending >= 0L) streamOffsetOfPending += pendingBytes.size
         pendingBytes = fetchSegment(segmentUrls[index], index)
+        Timber.tag("TidalDash").d("nextSegment urlIndex=%d size=%d streamOffset=%d first8=%s", index, pendingBytes.size, streamOffsetOfPending, pendingBytes.take(8).joinToString("") { "%02x".format(it) })
         pendingOffset = 0
         nextSegmentIndex++
         return pendingBytes.isNotEmpty()
@@ -201,6 +195,74 @@ internal class TidalProgressiveDashDataSource(
             !flacRemux -> bytes
             segmentIndex == 0 -> TidalAudioProvider.progressiveDashFlacMetadata(bytes)
             else -> TidalAudioProvider.progressiveDashAudioPayload(bytes)
+        }
+    }
+
+    /**
+     * Appends a real FLAC SEEKTABLE to the remuxed metadata so ExoPlayer seeks by exact
+     * sample/byte points instead of a constant-bitrate estimate. Each media segment begins on
+     * a frame boundary (fMP4 samples are whole FLAC frames), so one seek point per segment —
+     * sample number from the manifest's SegmentTimeline, byte offset from the probed index —
+     * is both exact and cheap. Offsets are relative to the first frame, so growing the header
+     * does not invalidate them. Returns the metadata unchanged when anything is missing.
+     */
+    private fun appendFlacSeekTable(
+        metadata: ByteArray,
+        manifestText: String,
+    ): ByteArray {
+        if (metadata.size < 38) return metadata
+        val index = segmentIndex ?: return metadata
+        val durations = parseSegmentTimelineDurations(manifestText) ?: return metadata
+        val timescale = MANIFEST_TIMESCALE.find(manifestText)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: return metadata
+        val sampleRate = MANIFEST_SAMPLERATE.find(manifestText)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: return metadata
+        if (timescale <= 0L || sampleRate <= 0L) return metadata
+        if (durations.size != index.size) return metadata
+
+        val points = index.size * 18
+        val out = ByteArray(metadata.size + 4 + points)
+        metadata.copyInto(out, 0)
+        // The existing final block (STREAMINFO) is no longer last: clear its last-block flag.
+        out[0] = (out[0].toInt() and 0x7F).toByte()
+        var cursor = metadata.size
+        // SEEKTABLE = block type 3, and it is now the last block.
+        out[cursor] = (0x80 or 3).toByte()
+        out[cursor + 1] = ((points shr 16) and 0xFF).toByte()
+        out[cursor + 2] = ((points shr 8) and 0xFF).toByte()
+        out[cursor + 3] = (points and 0xFF).toByte()
+        cursor += 4
+        var sampleNumber = 0L
+        var bytesBeforeSegment = 0L
+        for (mediaIndex in index.indices) {
+            val p = cursor + mediaIndex * 18
+            writeUint64(out, p, sampleNumber)
+            writeUint64(out, p + 8, bytesBeforeSegment)
+            out[p + 16] = 0
+            out[p + 17] = 1
+            sampleNumber += durations[mediaIndex] * sampleRate / timescale
+            bytesBeforeSegment += index[mediaIndex].streamSize
+        }
+        return out
+    }
+
+    /** Media-segment durations from the SegmentTimeline, timescale units, `r` expanded. */
+    private fun parseSegmentTimelineDurations(manifestText: String): List<Long>? {
+        val durations = mutableListOf<Long>()
+        for (match in SEGMENT_TIMELINE_ENTRY.findAll(manifestText)) {
+            val d = match.groupValues[1].toLongOrNull() ?: return null
+            if (d <= 0L) return null
+            val repeat = match.groupValues.getOrNull(2)?.toIntOrNull()?.takeIf { it > 0 } ?: 0
+            repeat(repeat + 1) { durations += d }
+        }
+        return durations.takeIf { it.isNotEmpty() }
+    }
+
+    private fun writeUint64(
+        bytes: ByteArray,
+        offset: Int,
+        value: Long,
+    ) {
+        for (i in 0 until 8) {
+            bytes[offset + i] = ((value shr ((7 - i) * 8)) and 0xFF).toByte()
         }
     }
 
@@ -226,7 +288,14 @@ internal class TidalProgressiveDashDataSource(
                 if (!response.isSuccessful) {
                     throw IOException("TIDAL $label HTTP ${response.code}")
                 }
-                response.body?.bytes() ?: throw IOException("TIDAL $label was empty")
+                val bytes = response.body?.bytes() ?: throw IOException("TIDAL $label was empty")
+                Timber.tag("TidalDash").d(
+                    "fetch %s code=%d bytes=%d first8=%s range=%s",
+                    label, response.code, bytes.size,
+                    bytes.take(8).joinToString("") { "%02x".format(it) },
+                    response.header("Content-Range") ?: "-",
+                )
+                bytes
             }
         } catch (error: IOException) {
             throw error
@@ -367,12 +436,15 @@ internal class TidalProgressiveDashDataSource(
             throw IOException("TIDAL progressive stream ended before the requested position")
         }
         val info = index[mediaIndex]
+        Timber.tag("TidalDash").d("jump abs=%d mediaIndex=%d intra=%d payloadOffset=%d streamStart=%d", absolutePosition, mediaIndex, remaining, info.payloadOffset, streamOffsetOfSegment(index, mediaIndex))
         if (flacRemux) {
             // Range from the target byte inside the mdat payload to the segment end yields the
             // raw FLAC frames; align to the first frame sync because the seek target is the
             // extractor's constant-bitrate estimate, rarely a real boundary.
             var payload = fetchRange(info.url, from = info.payloadOffset + remaining, toInclusive = null, label = "seek segment ${mediaIndex + 1}")
+            val beforeAlign = payload.size
             payload = alignToFlacFrameSync(payload)
+            Timber.tag("TidalDash").d("jump fetched=%d alignShift=%d first8=%s", beforeAlign, beforeAlign - payload.size, payload.take(8).joinToString("") { "%02x".format(it) })
             pendingBytes = payload
             pendingOffset = 0
             streamOffsetOfPending = streamOffsetOfSegment(index, mediaIndex) + remaining
@@ -469,6 +541,9 @@ internal class TidalProgressiveDashDataSource(
 
     companion object {
         private val MANIFEST_CODEC = Regex("""codecs="([^"]+)"""")
+        private val MANIFEST_TIMESCALE = Regex("""timescale="(\d+)""")
+        private val MANIFEST_SAMPLERATE = Regex("""audioSamplingRate="(\d+)""")
+        private val SEGMENT_TIMELINE_ENTRY = Regex("""<S\s+d="(\d+)"(?:\s+r="(\d+)")?""")
         private const val PROBE_CONCURRENCY = 8
     }
 }
