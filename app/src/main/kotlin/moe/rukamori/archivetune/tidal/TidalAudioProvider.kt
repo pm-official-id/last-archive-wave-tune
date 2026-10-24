@@ -1019,6 +1019,9 @@ object TidalAudioProvider {
             .build()
             .toString()
 
+    /** Integer-izes float timescale/duration attributes; see [DashManifestSanitizer.sanitize]. */
+    internal fun sanitizeDashManifestXml(rawXml: String): String = DashManifestSanitizer.sanitize(rawXml)
+
     /** Reads the segment list used by the progressive FLAC data source. */
     internal fun progressiveDashSegmentUrls(manifestText: String): List<String> =
         runCatching { extractDashSegmentUrls(manifestText.sanitizeXmlEntities()) }

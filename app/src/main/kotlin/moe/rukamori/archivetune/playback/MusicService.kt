@@ -49,6 +49,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.ParserException
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -385,6 +386,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import timber.log.Timber
 import java.io.EOFException
+import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.ObjectInputStream
@@ -3828,10 +3830,11 @@ class MusicService :
         minimumBufferedMs: Long,
     ): Boolean {
         if (minimumBufferedMs <= 0L) return true
-        if (targetPlayer.currentMediaItem
+        if (
+            targetPlayer.currentMediaItem
                 ?.localConfiguration
-                ?.uri
-                ?.shouldBypassPlayerCache() == true
+                ?.let { config -> config.uri.shouldBypassPlayerCache() && config.mimeType != MimeTypes.APPLICATION_MPD }
+            == true
         ) {
             return true
         }
@@ -4682,6 +4685,15 @@ class MusicService :
                         ?.toMediaItem()
                         ?.takeUnless { item ->
                             item.hasBlockedArtist(loadBlockedArtistIds())
+                        }?.let { item ->
+                            // Already-resolved LastWave track: start it directly on the
+                            // DashMediaSource path (native LastWave's playback route) so seeks
+                            // are exact from the first second. Cold tracks fall through to the
+                            // lazy resolver and are upgraded by it once resolution lands.
+                            val mediaId = item.mediaId.trim()
+                            lastWaveDashTargets[mediaId]?.takeIf(File::isFile)?.let { manifest ->
+                                buildLastWaveDashItem(item, manifest)
+                            } ?: item
                         }
                 if (preloadItem != null) {
                     player.setMediaItem(preloadItem)
@@ -6069,6 +6081,13 @@ class MusicService :
 
         beginHistorySession(mediaItem?.mediaId, forceNew = true)
 
+        // The transition target may be a previously resolved LastWave track that reached this
+        // slot unswapped (queue-row click, restored queue). Position is still ~0 here, so this
+        // is the last free chance to move it onto the DashMediaSource path for this play.
+        mediaItem?.mediaId?.trim()?.takeIf { it.isNotBlank() && lastWaveDashTargets.containsKey(it) }?.let { mediaId ->
+            maybeSwapCurrentItemToLastWaveDash(mediaId)
+        }
+
         val currentIndex = player.currentMediaItemIndex
         val queue = player.mediaItems.map { it.metadata }
         if (queue.any { it != null }) {
@@ -6145,13 +6164,18 @@ class MusicService :
         prefetchNextMediaItemStream()
     }
 
-    private fun isCurrentPlaybackItemLocal(currentMediaMetadata: MediaMetadata): Boolean =
-        currentSong.value?.song?.isLocal == true ||
+    private fun isCurrentPlaybackItemLocal(currentMediaMetadata: MediaMetadata): Boolean {
+        // A LastWave DASH item's manifest lives in a local file, but its audio segments
+        // stream over the network — it must not be treated as an offline local track
+        // (the infinite queue would refuse to bootstrap behind it).
+        if (player.currentMediaItem?.localConfiguration?.mimeType == MimeTypes.APPLICATION_MPD) return false
+        return currentSong.value?.song?.isLocal == true ||
             currentMediaMetadata.id.trim().isLocalMediaId() ||
             player.currentMediaItem
                 ?.localConfiguration
                 ?.uri
                 ?.shouldBypassPlayerCache() == true
+    }
 
     /**
      * In-memory cache of resolved [DirectStream]s (Qobuz / Tidal) keyed by media id. Populated by
@@ -6173,6 +6197,76 @@ class MusicService :
         val stream: DirectStream,
         val expiresAtMs: Long,
     )
+
+    /**
+     * Local LastWave DASH manifests (.mpd) by media id, populated by [resolveLastWaveAddonStream].
+     *
+     * Native LastWave plays these streams by handing ExoPlayer the real manifest —
+     * DashMediaSource + the manifest's own segment timeline — so seeking is exact on every
+     * device. The synthesized progressive stream ([TidalProgressiveDashDataSource]) fights
+     * media3's progressive seek machinery instead (constant-bitrate re-estimates, renderer
+     * re-targeting) and left devices where seeking mutes playback. Whenever a manifest is
+     * at hand, the queue item is swapped to a DASH item pointing at this local file; the
+     * progressive path stays as the fallback for items that never got swapped in time.
+     */
+    private val lastWaveDashTargets = ConcurrentHashMap<String, File>()
+
+    /** Builds the DashMediaSource variant of a queue item: same media id, local manifest uri. */
+    private fun buildLastWaveDashItem(
+        original: MediaItem,
+        manifestFile: File,
+    ): MediaItem =
+        original
+            .buildUpon()
+            .setUri(Uri.fromFile(manifestFile))
+            .setMimeType(MimeTypes.APPLICATION_MPD)
+            // DASH chunk caching keys off each segment's own CDN URL (rendition-specific, so
+            // stale bytes are structurally impossible). Per-item custom cache keys are a
+            // progressive-only concept and must not ride along on a DASH item.
+            .setCustomCacheKey(null)
+            .build()
+
+    private fun isLastWaveDashItem(item: MediaItem): Boolean =
+        item.localConfiguration?.mimeType == MimeTypes.APPLICATION_MPD
+
+    /** Swaps a queue slot to its DASH variant; safe to call repeatedly and from any thread. */
+    private fun swapMediaItemToLastWaveDash(
+        index: Int,
+        mediaId: String,
+    ) {
+        if (index < 0 || index >= player.mediaItemCount) return
+        val item = player.getMediaItemAt(index)
+        if (item.mediaId.trim() != mediaId || isLastWaveDashItem(item)) return
+        val manifestFile = lastWaveDashTargets[mediaId]?.takeIf(File::isFile) ?: return
+        runCatching {
+            player.replaceMediaItem(index, buildLastWaveDashItem(item, manifestFile))
+            Timber.tag(TAG).i("LastWave DASH: queue item %d (%s) now plays via DashMediaSource", index, mediaId)
+        }.onFailure { error ->
+            Timber.tag(TAG).w(error, "LastWave DASH swap failed for %s", mediaId)
+        }
+    }
+
+    /**
+     * Late upgrade for the item that is already playing through the progressive fallback: if the
+     * LastWave manifest resolved while the track is still near its start, restart it as a DASH
+     * item so the rest of the track — and every seek in it — follows the exact DASH timeline.
+     * Beyond the guard window the current play is left alone; the swap then only benefits the
+     * next time the track is queued.
+     */
+    private fun maybeSwapCurrentItemToLastWaveDash(mediaId: String) {
+        val index = player.currentMediaItemIndex
+        if (index < 0 || index >= player.mediaItemCount) return
+        if (player.getMediaItemAt(index).mediaId.trim() != mediaId) return
+        if (player.currentPosition > LASTWAVE_CURRENT_SWAP_WINDOW_MS) return
+        swapMediaItemToLastWaveDash(index, mediaId)
+    }
+
+    /** Posts a queue swap onto the playback/main thread; callers may be on IO threads. */
+    private fun postLastWaveDashSwap(action: () -> Unit) {
+        scope.launch(Dispatchers.Main.immediate) {
+            if (playerInitialized.value) action()
+        }
+    }
 
     /**
      * Prefetches the stream URL for the next-up media item in the queue so that when the user skips
@@ -6228,6 +6322,13 @@ class MusicService :
                             // The cache is implicit in tidalActiveMediaIds +
                             // sourceCacheKey() — we don't need to duplicate it.
                             Timber.tag(TAG).d("Prefetch: lossless stream resolved for %s", mediaId)
+                            // A resolved LastWave manifest upgrades the not-yet-current queue slot
+                            // to the DashMediaSource path before the transition reaches it —
+                            // replacing a future item never interrupts playback. The swap re-checks
+                            // the slot's media id, so queue mutations since are harmless.
+                            if (lastWaveDashTargets.containsKey(mediaId)) {
+                                postLastWaveDashSwap { swapMediaItemToLastWaveDash(nextIndex, mediaId) }
+                            }
                             return@runCatching
                         }
                     }
@@ -6939,6 +7040,24 @@ class MusicService :
                     )
                 }
             if (playbackStreamRecoveryTracker.registerRetryAttempt(currentMediaId)) {
+                // A LastWave progressive parse failure (synthesized FLAC/fMP4 bytes the extractor
+                // rejects — FlacFrameReader exceptions) is unrecoverable by re-preparing the same
+                // item: it re-reads the same synthesized stream and throws again. Swap the item to
+                // the DashMediaSource path, where the real manifest parses through media3's DASH
+                // pipeline instead.
+                if (lastWaveDashTargets.containsKey(currentMediaId)) {
+                    Timber.tag(TAG).i(
+                        "LastWave DASH: parser error on progressive path; forcing DASH item for %s",
+                        currentMediaId,
+                    )
+                    // After a source error the player sits in STATE_IDLE; replacing the item does
+                    // not re-prepare on its own, so drive it explicitly and resume playback.
+                    val shouldResume = player.playWhenReady
+                    swapMediaItemToLastWaveDash(player.currentMediaItemIndex, currentMediaId)
+                    player.prepare()
+                    if (shouldResume) player.play()
+                    return
+                }
                 Timber.tag("MusicService").i(
                     "Retrying playback for %s after parser source error %d",
                     currentMediaId,
@@ -7823,6 +7942,17 @@ class MusicService :
                 audioNormalizationFactorCache[mediaId] = 1f
                 recordResolvedSource(mediaId, cached.stream.source)
                 recordActiveSource(mediaId, cached.stream.source)
+                if (cached.stream.source == AudioSourceType.LASTWAVE) {
+                    // Cache hits skip resolveLastWaveAddonStream, so recover the manifest from the
+                    // cached progressive URI and keep the DashMediaSource upgrade path alive.
+                    cached.stream.uri.toUri().getQueryParameter("manifest")?.let { manifestPath ->
+                        val manifestFile = File(manifestPath)
+                        if (manifestFile.isFile) {
+                            lastWaveDashTargets[mediaId] = manifestFile
+                            postLastWaveDashSwap { maybeSwapCurrentItemToLastWaveDash(mediaId) }
+                        }
+                    }
+                }
                 val cacheKey = sourceCacheKey(cached.stream, mediaId)
                 cached.stream.contentLength?.takeIf { it > 0L }?.let { contentLengthCache[cacheKey] = it }
                 return dataSpec
@@ -8448,30 +8578,63 @@ class MusicService :
                 var mimeType = stream.mimeType
                 var streamCodecs = stream.audioCodecOverride ?: "flac"
 
-                if (playUrl.startsWith("data:application/dash+xml;base64,", ignoreCase = true) || playUrl.contains(".mpd")) {
-                    val xml = if (playUrl.startsWith("data:application/dash+xml;base64,", ignoreCase = true)) {
-                        String(
-                            android.util.Base64.decode(playUrl.substringAfter("base64,"), android.util.Base64.DEFAULT),
-                            Charsets.UTF_8,
-                        )
-                    } else {
-                        runCatching {
-                            val req = Request.Builder().url(playUrl).header("User-Agent", "LastWave-Player/1.0").get().build()
-                            mediaOkHttpClient.newCall(req).execute().use { it.body?.string().orEmpty() }
-                        }.getOrDefault("")
-                    }
+                val manifestLikeUrl =
+                    playUrl.startsWith("data:application/dash+xml", ignoreCase = true) ||
+                        playUrl.trimStart().startsWith("<") ||
+                        playUrl.contains(".mpd")
+                if (manifestLikeUrl) {
+                    val rawXml =
+                        when {
+                            playUrl.startsWith("data:application/dash+xml;base64,", ignoreCase = true) ->
+                                String(
+                                    android.util.Base64.decode(playUrl.substringAfter("base64,"), android.util.Base64.DEFAULT),
+                                    Charsets.UTF_8,
+                                )
+                            playUrl.startsWith("data:application/dash+xml,", ignoreCase = true) ->
+                                java.net.URLDecoder.decode(playUrl.substringAfter(","), "UTF-8")
+                            playUrl.trimStart().startsWith("<") -> playUrl.trimStart()
+                            else ->
+                                runCatching {
+                                    val req = Request.Builder().url(playUrl).header("User-Agent", "LastWave-Player/1.0").get().build()
+                                    mediaOkHttpClient.newCall(req).execute().use { it.body?.string().orEmpty() }
+                                }.getOrDefault("")
+                        }
 
-                    if (xml.isNotBlank()) {
+                    if (rawXml.isNotBlank()) {
+                        // Media3's DashManifestParser reads SegmentTemplate/SegmentList timescale and
+                        // duration with Long.parseLong: a decimal like duration="10.000" makes it throw
+                        // and seeking resets to 0. The addon's manifests can carry decimals, so both the
+                        // DashMediaSource path and the progressive fallback get the sanitized XML.
+                        // (Ported from native LastWave's SegmentedMpdBuilder.sanitizeMpdXml.)
+                        val xml = TidalAudioProvider.sanitizeDashManifestXml(rawXml)
                         val digest = java.security.MessageDigest.getInstance("SHA-256")
                             .digest(xml.toByteArray(Charsets.UTF_8))
                             .joinToString("") { "%02x".format(it) }
                             .take(16)
                         val dir = java.io.File(cacheDir, "tidal_mpd").apply { mkdirs() }
-                        val file = java.io.File(dir, "lastwave_${stream.trackId}_$digest.mpd")
+                        // Content-addressed + atomic: a re-resolve (expiry refresh, retry) must never
+                        // rewrite the manifest a playing item is still reading — a torn manifest
+                        // corrupts the DASH timeline into a frozen position that later jumps while
+                        // audio plays from the wrong point. Superseded files for the same track are
+                        // dropped so re-resolves don't accumulate. Mirrors native's bridge.
+                        val prefix = "lastwave_${stream.trackId}_"
+                        val file = java.io.File(dir, "${prefix}$digest.mpd")
                         if (!file.exists()) {
-                            runCatching { file.writeText(xml, Charsets.UTF_8) }
+                            runCatching {
+                                val tmp = java.io.File(dir, "${file.name}.tmp")
+                                tmp.writeText(xml, Charsets.UTF_8)
+                                if (!tmp.renameTo(file)) file.writeText(xml, Charsets.UTF_8)
+                            }
+                            runCatching {
+                                dir.listFiles { f -> f.name.startsWith(prefix) && f.name != file.name }
+                                    ?.forEach { superseded -> runCatching { superseded.delete() } }
+                            }
                         }
                         playUrl = TidalAudioProvider.progressiveDashUri(file)
+                        // Hand the same manifest to the DashMediaSource path (native LastWave's
+                        // approach): the queue item gets swapped to it as soon as it is safe to,
+                        // and only falls back to the progressive URI above when the swap missed.
+                        lastWaveDashTargets[query.mediaId] = file
 
                         // The data source remuxes only FLAC renditions; Atmos (E-AC-3 JOC) and
                         // AAC renditions pass through as fragmented MP4, so the declared mime and
@@ -8941,6 +9104,11 @@ class MusicService :
     ): DataSpec {
         Timber.tag("MusicService").i("Using %s stream for %s: %s", stream.source, mediaId, stream.label)
         recordActiveSource(mediaId, stream.source)
+        // Lazy resolution completed while this item plays through the progressive fallback.
+        // Upgrade it to the DashMediaSource path early in the track so seeks are exact.
+        if (stream.source == AudioSourceType.LASTWAVE && lastWaveDashTargets.containsKey(mediaId)) {
+            postLastWaveDashSwap { maybeSwapCurrentItemToLastWaveDash(mediaId) }
+        }
         val cacheKey = sourceCacheKey(stream, mediaId)
         stream.contentLength?.takeIf { it > 0L }?.let { contentLengthCache[cacheKey] = it }
         tidalActiveMediaIds.add(mediaId)
@@ -10761,6 +10929,9 @@ class MusicService :
         private const val INFINITE_QUEUE_MAX_BOOTSTRAP_PAGES = 3
         private const val DISCORD_SYNC_TAG = "DiscordSync"
         private const val DISCORD_HOLD_TIMEOUT_MS = 7_000L
+
+        /** How deep into a track a lazily resolved LastWave DASH swap may still restart it. */
+        private const val LASTWAVE_CURRENT_SWAP_WINDOW_MS = 15_000L
         const val CHANNEL_ID = "music_channel_01"
         const val ACTION_MEDIA_NOTIFICATION_DISMISSED =
             "moe.rukamori.archivetune.action.MEDIA_NOTIFICATION_DISMISSED"
